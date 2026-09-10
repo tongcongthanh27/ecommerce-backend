@@ -14,7 +14,8 @@ public enum ErrorCode {
     VARIANTNOTFOUND(1003, "Variant not found", HttpStatus.BAD_REQUEST),
     INVENTORYNOTFOUND(1004, "Inventory not found", HttpStatus.BAD_REQUEST),
     CARTITEMNOTFOUND(1005, "Cart item not found", HttpStatus.BAD_REQUEST),
-    INSUFFICIENTSTOCK(1006, "INSUFFICIENTSTOCK", HttpStatus.BAD_REQUEST)
+    INSUFFICIENTSTOCK(1006, "There is insufficient stock of this product.", HttpStatus.BAD_REQUEST),
+    CART_ITEM_NOT_FOUND(1007, "Cart Item not found", HttpStatus.BAD_REQUEST)
             ;
 
     private int code = 1000;
