@@ -1,7 +1,6 @@
 package org.example.ecommerc_shop.config;
 
 import lombok.RequiredArgsConstructor;
-import org.example.ecommerc_shop.service.IAccountService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;

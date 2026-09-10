@@ -2,27 +2,25 @@ package org.example.ecommerc_shop.service.impl;
 
 import lombok.RequiredArgsConstructor;
 import org.example.ecommerc_shop.entity.User;
-import org.example.ecommerc_shop.repository.IAccountRepository;
-import org.example.ecommerc_shop.service.IAccountService;
+import org.example.ecommerc_shop.repository.AccountRepository;
+import org.example.ecommerc_shop.service.AccountService;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 
-import java.util.Collections;
-
 @Service
 @RequiredArgsConstructor
-public class IAccountServiceImpl implements IAccountService {
-    private final IAccountRepository iAccountRepository;
+public class AccountServiceImpl implements AccountService {
+    private final AccountRepository accountRepository;
 
     @Override
     public User getUserByUsername(String username) {
-        return iAccountRepository.findByUsername(username);
+        return accountRepository.findByUsername(username);
     }
 
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-        User user = iAccountRepository.findByUsername(username);
+        User user = accountRepository.findByUsername(username);
         if (user == null){
             throw new UsernameNotFoundException("ko tim thay user");
         }
