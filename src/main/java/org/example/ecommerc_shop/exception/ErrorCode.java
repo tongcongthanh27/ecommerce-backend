@@ -15,7 +15,9 @@ public enum ErrorCode {
     INVENTORYNOTFOUND(1004, "Inventory not found", HttpStatus.BAD_REQUEST),
     CARTITEMNOTFOUND(1005, "Cart item not found", HttpStatus.BAD_REQUEST),
     INSUFFICIENTSTOCK(1006, "There is insufficient stock of this product.", HttpStatus.BAD_REQUEST),
-    CART_ITEM_NOT_FOUND(1007, "Cart Item not found", HttpStatus.BAD_REQUEST)
+    CART_ITEM_NOT_FOUND(1007, "Cart Item not found", HttpStatus.BAD_REQUEST),
+    COUPONNOTFOUND(1008, "Coupon not found", HttpStatus.BAD_REQUEST),
+    COUPONINVALID(1009, "Coupon not ACTIVE", HttpStatus.BAD_REQUEST),
             ;
 
     private int code = 1000;

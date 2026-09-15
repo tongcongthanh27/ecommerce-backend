@@ -2,6 +2,8 @@ package org.example.ecommerc_shop.service.impl;
 
 import lombok.RequiredArgsConstructor;
 import org.example.ecommerc_shop.entity.User;
+import org.example.ecommerc_shop.exception.AppException;
+import org.example.ecommerc_shop.exception.ErrorCode;
 import org.example.ecommerc_shop.repository.AccountRepository;
 import org.example.ecommerc_shop.service.AccountService;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -22,7 +24,7 @@ public class AccountServiceImpl implements AccountService {
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
         User user = accountRepository.findByUsername(username);
         if (user == null){
-            throw new UsernameNotFoundException("ko tim thay user");
+            throw new AppException(ErrorCode.USERNOTFOUND);
         }
 
         return org.springframework.security.core.userdetails.User

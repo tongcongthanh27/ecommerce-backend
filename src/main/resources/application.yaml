@@ -4,7 +4,7 @@ spring:
   datasource:
     username: root
     password: 2716
-    url: jdbc:mysql://localhost:3306/ecommerce
+    url: jdbc:mysql://localhost:3306/prj_ecommerce
 server:
   port: 8686
 logging:

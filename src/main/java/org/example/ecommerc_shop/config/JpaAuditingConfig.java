@@ -13,6 +13,7 @@ import java.util.Optional;
 @EnableJpaAuditing
 public class JpaAuditingConfig {
 
+    //anh hoi e ve SecurityContextHolder
     @Bean
     public AuditorAware<String> auditorProvider() {
         return new AuditorAware<String>() {

@@ -6,6 +6,7 @@ import org.example.ecommerc_shop.dto.request.UpdateCartItemRequest;
 import org.example.ecommerc_shop.dto.response.CartItemResponse;
 import org.example.ecommerc_shop.dto.response.CartSummaryResponse;
 import org.example.ecommerc_shop.service.CartService;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.security.Principal;

@@ -18,7 +18,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -29,39 +33,34 @@ public class CartServiceImpl implements CartService {
     private final CartItemMapper cartItemMapper;
 
     @Override
-    @Transactional
+    @Transactional(readOnly = true)
     public List<CartItemResponse> getMyCart(String username) {
-        List<CartItem> items = cartItemRepository.findByCart_User_UsernameAndDeletedFalse(username);
+        List<CartItem> items = cartItemRepository.findDetailedByUsername(username);
+        Map<String, Integer> quantityInStockByVariantId = getQuantityInStockByVariantId(items);
         List<CartItemResponse> responses = new ArrayList<>();
         for (CartItem cartItem : items) {
             ProductVariant productVariant = cartItem.getProductVariant();
             if (productVariant == null) {
                 throw new AppException(ErrorCode.VARIANTNOTFOUND);
             }
-            Inventory inventory = inventoryRepository
-                    .findByProductVariantId(productVariant.getId())
-                    .orElseThrow(() ->
-                            new AppException(ErrorCode.INVENTORYNOTFOUND)
-                    );
             int quantity = cartItem.getQuantity();
-            int quantityInStock = inventory.getQuantityInStock();
-            String stockStatus;
-            if (quantityInStock <= 0 || quantityInStock < quantity) {
-                stockStatus = "OUT_OF_STOCK";
-            } else {
-                stockStatus = "IN_STOCK";
+            Integer quantityInStock = quantityInStockByVariantId.get(productVariant.getId());
+            if (quantityInStock == null) {
+                throw new AppException(ErrorCode.INVENTORYNOTFOUND);
             }
             CartItemResponse response =
                     cartItemMapper.toCartItemResponse(cartItem);
-            response.setStockStatus(stockStatus);
+            response.setStockStatus(resolveStockStatus(quantityInStock, quantity));
             responses.add(response);
         }
         return responses;
     }
+
     @Override
-    @Transactional
+    @Transactional(readOnly = true)
     public CartSummaryResponse getCartSummury(String username) {
-        List<CartItem> items = cartItemRepository.findByCart_User_UsernameAndDeletedFalse(username);
+        List<CartItem> items = cartItemRepository.findDetailedByUsername(username);
+        Map<String, Integer> quantityInStockByVariantId = getQuantityInStockByVariantId(items);
         int totalItems = 0;
         BigDecimal subtotal = BigDecimal.ZERO;
         for (CartItem cartItem : items) {
@@ -69,13 +68,11 @@ public class CartServiceImpl implements CartService {
             if (productVariant == null) {
                 throw new AppException(ErrorCode.VARIANTNOTFOUND);
             }
-            Inventory inventory = inventoryRepository
-                    .findByProductVariantId(productVariant.getId())
-                    .orElseThrow(() ->
-                            new AppException(ErrorCode.INVENTORYNOTFOUND)
-                    );
             int quantity = cartItem.getQuantity();
-            int quantityInStock = inventory.getQuantityInStock();
+            Integer quantityInStock = quantityInStockByVariantId.get(productVariant.getId());
+            if (quantityInStock == null) {
+                throw new AppException(ErrorCode.INVENTORYNOTFOUND);
+            }
             if (quantityInStock >= quantity) {
                 BigDecimal itemSubtotal =
                         productVariant.getPrice()
@@ -93,12 +90,13 @@ public class CartServiceImpl implements CartService {
                 .total(total)
                 .build();
     }
+
     @Override
     @Transactional
     public CartItemResponse updateQuantity(String id, String username, UpdateCartItemRequest updateCartItemRequest) {
 
         CartItem cartItem = cartItemRepository
-                .findByIdAndCart_User_UsernameAndDeletedFalse(id, username)
+                .findDetailedByIdAndUsername(id, username)
                 .orElseThrow(() ->
                         new AppException(ErrorCode.CARTITEMNOTFOUND)
                 );
@@ -117,25 +115,45 @@ public class CartServiceImpl implements CartService {
         }
         cartItem.setQuantity(newQuantity);
         CartItemResponse response = cartItemMapper.toCartItemResponse(cartItem);
-        String stockStatus;
-        if (inventory.getQuantityInStock() <= 0 || inventory.getQuantityInStock() < newQuantity) {
-            stockStatus = "OUT_OF_STOCK";
-        } else {
-            stockStatus = "IN_STOCK";
-        }
-        response.setStockStatus(stockStatus);
+        response.setStockStatus(resolveStockStatus(inventory.getQuantityInStock(), newQuantity));
         return response;
     }
 
     @Override
     @Transactional
     public void deleteCartItem(String id, String username) {
+        int updatedRows = cartItemRepository.softDeleteByIdAndUsername(id, username);
+        if (updatedRows == 0) {
+            throw new AppException(ErrorCode.CARTITEMNOTFOUND);
+        }
+    }
 
-        CartItem cartItem = cartItemRepository
-                .findByIdAndCart_User_UsernameAndDeletedFalse(id, username)
-                .orElseThrow(() ->
-                        new AppException(ErrorCode.CARTITEMNOTFOUND)
-                );
-        cartItem.setDeleted(true);
+    private Map<String, Integer> getQuantityInStockByVariantId(List<CartItem> items) {
+        Set<String> variantIds = new HashSet<>();
+        for (CartItem cartItem : items) {
+            ProductVariant productVariant = cartItem.getProductVariant();
+            if (productVariant == null) {
+                throw new AppException(ErrorCode.VARIANTNOTFOUND);
+            }
+            variantIds.add(productVariant.getId());
+        }
+
+        Map<String, Integer> quantityInStockByVariantId = new HashMap<>();
+        if (variantIds.isEmpty()) {
+            return quantityInStockByVariantId;
+        }
+
+        List<Inventory> inventories = inventoryRepository.findByProductVariantIdIn(new ArrayList<>(variantIds));
+        for (Inventory inventory : inventories) {
+            quantityInStockByVariantId.put(inventory.getProductVariant().getId(), inventory.getQuantityInStock());
+        }
+        return quantityInStockByVariantId;
+    }
+
+    private String resolveStockStatus(int quantityInStock, int requestedQuantity) {
+        if (quantityInStock <= 0 || quantityInStock < requestedQuantity) {
+            return "OUT_OF_STOCK";
+        }
+        return "IN_STOCK";
     }
 }
