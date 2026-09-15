@@ -18,6 +18,7 @@ public enum ErrorCode {
     CART_ITEM_NOT_FOUND(1007, "Cart Item not found", HttpStatus.BAD_REQUEST),
     COUPONNOTFOUND(1008, "Coupon not found", HttpStatus.BAD_REQUEST),
     COUPONINVALID(1009, "Coupon not ACTIVE", HttpStatus.BAD_REQUEST),
+    COUPON_ALREADY_EXISTS(1010, "Coupon code already exists", HttpStatus.BAD_REQUEST),
             ;
 
     private int code = 1000;
