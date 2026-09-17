@@ -22,6 +22,9 @@ public enum ErrorCode {
     CATEGORY_NAME_EXISTED(1011, "Category name already exists", HttpStatus.BAD_REQUEST),
     CATEGORY_NOT_FOUND(1012, "Category not found", HttpStatus.NOT_FOUND),
     INVALID_PARENT_CATEGORY(1013, "Category cannot be its own parent", HttpStatus.BAD_REQUEST),
+    USERNAME_ALREADY_EXIST(1014, "Username already exists", HttpStatus.BAD_REQUEST),
+    EMAIL_ALREADY_EXIST(1015, "Email already exists", HttpStatus.BAD_REQUEST),
+    PHONE_ALREADY_EXIST(1016, "Phone number already exists", HttpStatus.BAD_REQUEST),
             ;
 
     private int code = 1000;

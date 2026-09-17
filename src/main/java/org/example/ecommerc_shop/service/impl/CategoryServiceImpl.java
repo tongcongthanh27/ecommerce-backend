@@ -110,11 +110,6 @@ public class CategoryServiceImpl implements CategoryService {
     @Override
     @Transactional
     public CategoryResponse updateCategory(String id, CategoryUpdateRequest request) {
-        System.out.println("ID = " + id);
-        System.out.println("NAME = " + request.getName());
-        System.out.println("DESCRIPTION = " + request.getDescription());
-        System.out.println("PARENT ID = " + request.getParentId());
-        System.out.println("IMAGE = " + request.getImage());
         Category category = categoryRepository
                 .findByIdAndDeletedFalse(id)
                 .orElseThrow(() ->
