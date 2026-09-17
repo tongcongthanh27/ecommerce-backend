@@ -19,6 +19,9 @@ public enum ErrorCode {
     COUPONNOTFOUND(1008, "Coupon not found", HttpStatus.BAD_REQUEST),
     COUPONINVALID(1009, "Coupon not ACTIVE", HttpStatus.BAD_REQUEST),
     COUPON_ALREADY_EXISTS(1010, "Coupon code already exists", HttpStatus.BAD_REQUEST),
+    CATEGORY_NAME_EXISTED(1011, "Category name already exists", HttpStatus.BAD_REQUEST),
+    CATEGORY_NOT_FOUND(1012, "Category not found", HttpStatus.NOT_FOUND),
+    INVALID_PARENT_CATEGORY(1013, "Category cannot be its own parent", HttpStatus.BAD_REQUEST),
             ;
 
     private int code = 1000;

@@ -41,4 +41,7 @@ public class User extends BaseEntity implements Serializable {
 
     @Column(name = "avatar_url")
     private String avatarUrl;
+
+    @Column(name = "avatar_public_id")
+    private String avatarPublicId;
 }

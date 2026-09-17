@@ -28,4 +28,7 @@ public class Product extends BaseEntity implements Serializable {
 
     @Column(name = "thumbnail_url")
     private String thumbnailUrl;
+
+    @Column(name = "thumbnail_public_id")
+    private String thumbnailPublicId;
 }

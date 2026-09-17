@@ -33,4 +33,10 @@ public class Review extends BaseEntity implements Serializable {
 
     @Column(columnDefinition = "TEXT")
     private String comment;
+
+    @Column(name = "image_url")
+    private String imageUrl;
+
+    @Column(name = "image_public_id")
+    private String imagePublicId;
 }

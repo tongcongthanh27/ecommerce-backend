@@ -32,4 +32,7 @@ public class ProductVariant extends BaseEntity implements Serializable {
 
     @Column(name = "image_url")
     private String imageUrl;
+
+    @Column(name = "image_public_id")
+    private String imagePublicId;
 }
