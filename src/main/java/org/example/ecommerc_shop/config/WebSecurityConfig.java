@@ -29,10 +29,10 @@ public class WebSecurityConfig {
                 .cors(c -> c.disable())
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/auth/**").permitAll()
                         .requestMatchers(PUBLIC_SWAGGER_ENDPOINTS).permitAll()
-                        .requestMatchers("/admin/**").hasRole("ADMIN")
-                        .requestMatchers("/shipper/**").hasRole("SHIPPER")
+                        .requestMatchers("/api/v1/auth/**").permitAll()
+                        .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
+                        .requestMatchers("/api/v1/shipper/**").hasRole("SHIPPER")
                         .anyRequest().authenticated()
                 )
                 .httpBasic(Customizer.withDefaults());

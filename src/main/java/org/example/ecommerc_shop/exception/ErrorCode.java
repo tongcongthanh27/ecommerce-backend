@@ -25,6 +25,10 @@ public enum ErrorCode {
     USERNAME_ALREADY_EXIST(1014, "Username already exists", HttpStatus.BAD_REQUEST),
     EMAIL_ALREADY_EXIST(1015, "Email already exists", HttpStatus.BAD_REQUEST),
     PHONE_ALREADY_EXIST(1016, "Phone number already exists", HttpStatus.BAD_REQUEST),
+    PRODUCT_EXISTED(1017, "Product name already exists", HttpStatus.BAD_REQUEST),
+    PRODUCT_NOT_FOUND(1018, "Product not found", HttpStatus.NOT_FOUND),
+    PRODUCT_VARIANT_EXISTED(1019, "Product variant name already exists", HttpStatus.BAD_REQUEST),
+    SKU_ALREADY_EXISTS(1020, "Product variant SKU already exists", HttpStatus.BAD_REQUEST),
             ;
 
     private int code = 1000;

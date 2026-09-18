@@ -24,6 +24,9 @@ public class ProductVariant extends BaseEntity implements Serializable {
     @Column(name = "variant_name", nullable = false)
     private String variantName;
 
+    @Column(name = "sku")
+    private String sku;
+
     @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal price;
 
@@ -35,4 +38,7 @@ public class ProductVariant extends BaseEntity implements Serializable {
 
     @Column(name = "image_public_id")
     private String imagePublicId;
+
+    @Column(name = "quantity_in_stock")
+    private Integer quantityInStock;
 }
