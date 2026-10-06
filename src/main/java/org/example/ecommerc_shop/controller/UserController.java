@@ -85,4 +85,20 @@ public class UserController {
                 .result(userService.updateRole(userId, role))
                 .build();
     }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping("/filter")
+    public ApiResponse<Page<UserResponse>> filter(
+            @RequestParam(name = "username", required = false) String username,
+            @RequestParam(name = "email", required = false) String email,
+            @RequestParam(name = "full_name", required = false) String fullName,
+            @RequestParam(name = "role", required = false) UserRole userRole,
+            @RequestParam(name = "page", defaultValue = "1") int page,
+            @RequestParam(name = "size", defaultValue = "10") int size
+    ) {
+
+        return ApiResponse.<Page<UserResponse>>builder()
+                .result(userService.filter(username, email, fullName, userRole, page, size))
+                .build();
+    }
 }

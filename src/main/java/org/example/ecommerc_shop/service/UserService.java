@@ -13,4 +13,5 @@ public interface UserService {
     UserResponse getUserById(String id);
     UserResponse updateRole(String id, UserRole role);
     UserResponse updateUser(String id, UserUpdateRequest request);
+    Page<UserResponse> filter(String username, String email, String fullName, UserRole userRole, int page, int size);
 }

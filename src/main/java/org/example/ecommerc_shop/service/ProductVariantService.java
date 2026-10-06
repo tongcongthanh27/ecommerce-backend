@@ -5,9 +5,20 @@ import org.example.ecommerc_shop.dto.request.ProductVariantUpdateRequest;
 import org.example.ecommerc_shop.dto.response.ProductVariantResponse;
 import org.springframework.data.domain.Page;
 
+import java.math.BigDecimal;
+
 public interface ProductVariantService {
     ProductVariantResponse createVariant(String id, ProductVariantCreateRequest request);
     void deleteVariant(String id);
     ProductVariantResponse updateVariant(String variantId, ProductVariantUpdateRequest request);
     Page<ProductVariantResponse> getAllVariant(Integer pageSize, Integer pageNumber);
+    Page<ProductVariantResponse> filter(
+            String variantName,
+            String sku,
+            String productId,
+            BigDecimal minPrice,
+            BigDecimal maxPrice,
+            int page,
+            int size
+    );
 }

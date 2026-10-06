@@ -21,9 +21,12 @@ import org.example.ecommerc_shop.service.CategoryService;
 import org.example.ecommerc_shop.service.CloudinaryService;
 import org.example.ecommerc_shop.service.ProductService;
 import org.example.ecommerc_shop.service.ProductVariantService;
+import org.example.ecommerc_shop.service.specification.ProductSpec;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -38,7 +41,7 @@ public class ProductServiceImpl implements ProductService {
     private final CloudinaryService cloudinaryService;
     private final ProductVariantRepository productVariantRepository;
     private final ProductVariantMapper productVariantMapper;
-
+    private final CategoryService categoryService;
     @Override
     @Transactional
     public ProductResponse createProduct(ProductCreateRequest request) {
@@ -133,5 +136,36 @@ public class ProductServiceImpl implements ProductService {
             product.setThumbnailPublicId(uploadResult.getPublicId());
         }
         return productMapper.toProductResponse(product);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<ProductResponse> filter(String name, String categoryId, int page, int size) {
+        Specification<Product> specification = ProductSpec.isNotDeleted();
+        if (name != null && !name.isEmpty()) {
+            specification = specification.and(ProductSpec.likeName(name));
+        }
+        if (categoryId != null && !categoryId.isEmpty()) {
+            java.util.List<String> categoryIds = categoryService.getAllCategoryIds(categoryId);
+            specification = specification.and(ProductSpec.hasCategoryIdIn(categoryIds));
+        }
+        Pageable pageable = PageRequest.of(page - 1, size, Sort.by("createdAt").descending());
+        return productRepository.findAll(specification, pageable).map(productMapper::toProductResponse);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<ProductResponse> getProductByCategory(String categoryId, Integer pageSize, Integer pageNumber) {
+        // Kiểm tra category tồn tại
+        categoryRepository.findByIdAndDeletedFalse(categoryId)
+                .orElseThrow(() -> new AppException(ErrorCode.CATEGORY_NOT_FOUND));
+        // Lấy category hiện tại + toàn bộ category con
+        List<String> categoryIds = categoryService.getAllCategoryIds(categoryId);
+        // Tạo phân trang
+        Pageable pageable = PageRequest.of(pageNumber - 1, pageSize);
+        // Lấy product thuộc tất cả category
+        Page<Product> productPage = productRepository.findByCategoryIdInAndDeletedFalse(categoryIds, pageable);
+        // Map sang response
+        return productPage.map(productMapper::toProductResponse);
     }
 }

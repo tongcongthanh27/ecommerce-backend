@@ -32,18 +32,16 @@ public class CategoryController {
                 .build();
     }
 
-//    @PreAuthorize("hasAnyRole('ADMIN', 'USER', 'SHIPPER')")
     @GetMapping("/categories")
     public ApiResponse<Page<CategoryResponse>> getAllCategories(
-            @RequestParam(name = "page_size") Integer pageSize,
-            @RequestParam(name = "page_number") Integer pageNumber) {
+            @RequestParam(name = "page_size", defaultValue = "10") Integer pageSize,
+            @RequestParam(name = "page_number", defaultValue = "1") Integer pageNumber) {
 
         return ApiResponse.<Page<CategoryResponse>>builder()
                 .result(categoryService.getAllCategory(pageSize, pageNumber))
                 .build();
     }
 
-//    @PreAuthorize("hasAnyRole('ADMIN', 'USER', 'SHIPPER')")
     @GetMapping("/categories/{categoryId}")
     public ApiResponse<CategoryResponse> getCategoryById(
             @PathVariable String categoryId) {
@@ -53,7 +51,6 @@ public class CategoryController {
                 .build();
     }
 
-//    @PreAuthorize("hasAnyRole('ADMIN', 'USER', 'SHIPPER')")
     @GetMapping("/categories/tree")
     public ApiResponse<List<CategoryResponse>> getCategoryTree() {
 
@@ -82,6 +79,19 @@ public class CategoryController {
 
         return ApiResponse.<Void>builder()
                 .message("Delete Category Successfully")
+                .build();
+    }
+
+    @GetMapping("/categories/filter")
+    public ApiResponse<Page<CategoryResponse>> filter(
+            @RequestParam(name = "name", required = false) String name,
+            @RequestParam(name = "parent_id", required = false) String parentId,
+            @RequestParam(name = "page", defaultValue = "1") int page,
+            @RequestParam(name = "size", defaultValue = "10") int size
+    ) {
+
+        return ApiResponse.<Page<CategoryResponse>>builder()
+                .result(categoryService.filter(name, parentId, page, size))
                 .build();
     }
 }

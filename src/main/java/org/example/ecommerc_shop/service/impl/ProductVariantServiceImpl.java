@@ -15,11 +15,16 @@ import org.example.ecommerc_shop.repository.ProductRepository;
 import org.example.ecommerc_shop.repository.ProductVariantRepository;
 import org.example.ecommerc_shop.service.CloudinaryService;
 import org.example.ecommerc_shop.service.ProductVariantService;
+import org.example.ecommerc_shop.service.specification.ProductVariantSpec;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
 
 @Service
 @RequiredArgsConstructor
@@ -108,5 +113,37 @@ public class ProductVariantServiceImpl implements ProductVariantService {
         Pageable pageable = PageRequest.of(pageNumber -1 , pageSize);
         Page<ProductVariant> productVariantPage = productVariantRepository.findAllByDeletedFalse(pageable);
         return productVariantPage.map(productVariantMapper::toVariantResponse);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<ProductVariantResponse> filter(
+            String variantName,
+            String sku,
+            String productId,
+            BigDecimal minPrice,
+            BigDecimal maxPrice,
+            int page,
+            int size
+    ) {
+        Specification<ProductVariant> specification = ProductVariantSpec.isNotDeleted();
+        if (variantName != null && !variantName.isEmpty()) {
+            specification = specification.and(ProductVariantSpec.likeVariantName(variantName));
+        }
+        if (sku != null && !sku.isEmpty()) {
+            specification = specification.and(ProductVariantSpec.likeSku(sku));
+        }
+        if (productId != null && !productId.isEmpty()) {
+            specification = specification.and(ProductVariantSpec.hasProductId(productId));
+        }
+        if (minPrice != null) {
+            specification = specification.and(ProductVariantSpec.priceGreaterThanOrEqual(minPrice));
+        }
+        if (maxPrice != null) {
+            specification = specification.and(ProductVariantSpec.priceLessThanOrEqual(maxPrice));
+        }
+        Pageable pageable = PageRequest.of(page - 1, size, Sort.by("createdAt").descending());
+        return productVariantRepository.findAll(specification, pageable)
+                .map(productVariantMapper::toVariantResponse);
     }
 }

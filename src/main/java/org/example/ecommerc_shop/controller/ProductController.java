@@ -54,22 +54,42 @@ public class ProductController {
                 .build();
     }
 
-    @PreAuthorize("hasAnyRole('ADMIN', 'USER', 'SHIPPER')")
     @GetMapping("/products")
     public ApiResponse<Page<ProductResponse>> getAllProducts(
-            @RequestParam(name = "page_size") Integer pageSize,
-            @RequestParam(name = "page_number") Integer pageNumber) {
+            @RequestParam(name = "page_size", defaultValue = "10") Integer pageSize,
+            @RequestParam(name = "page_number", defaultValue = "1") Integer pageNumber) {
 
         return ApiResponse.<Page<ProductResponse>>builder()
                 .result(productService.getAllProduct(pageSize, pageNumber))
                 .build();
     }
 
-    @PreAuthorize("hasAnyRole('ADMIN', 'USER', 'SHIPPER')")
     @GetMapping("/products/{productId}")
     public ApiResponse<ProductDetailResponse> getProductById(@PathVariable String productId) {
         return ApiResponse.<ProductDetailResponse>builder()
                 .result(productService.getProductById(productId))
+                .build();
+    }
+
+    @GetMapping("/products/filter")
+    public ApiResponse<Page<ProductResponse>> filter(
+            @RequestParam(name = "name", required = false) String name,
+            @RequestParam(name = "category_id", required = false) String categoryId,
+            @RequestParam(name = "page", defaultValue = "1") int page,
+            @RequestParam(name = "size", defaultValue = "10") int size
+    ) {
+
+        return ApiResponse.<Page<ProductResponse>>builder()
+                .result(productService.filter(name, categoryId, page, size))
+                .build();
+    }
+
+    @GetMapping("/products/category/{categoryId}")
+    public ApiResponse<Page<ProductResponse>> getProductByCategory(@RequestParam(name = "page_size", defaultValue = "10") Integer pageSize,
+                                                                   @RequestParam(name = "page_number", defaultValue = "1") Integer pageNumber,
+                                                                   @PathVariable String categoryId){
+        return ApiResponse.<Page<ProductResponse>>builder()
+                .result(productService.getProductByCategory(categoryId, pageSize, pageNumber))
                 .build();
     }
 }

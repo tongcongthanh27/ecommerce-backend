@@ -12,9 +12,12 @@ import org.example.ecommerc_shop.mapper.CategoryMapper;
 import org.example.ecommerc_shop.repository.CategoryRepository;
 import org.example.ecommerc_shop.service.CategoryService;
 import org.example.ecommerc_shop.service.CloudinaryService;
+import org.example.ecommerc_shop.service.specification.CategorySpec;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -117,8 +120,19 @@ public class CategoryServiceImpl implements CategoryService {
         if (request.getName() != null && !request.getName().isBlank()) {
             category.setName(request.getName());
         }
-        if (request.getDescription() != null && !request.getDescription().isBlank()) {
-            category.setDescription(request.getDescription());
+        if (request.getParentId() != null) {
+            if (request.getParentId().isBlank()) {
+                category.setParentId(null);
+            } else {
+                if (id.equals(request.getParentId())) {
+                    throw new AppException(ErrorCode.INVALID_PARENT_CATEGORY);
+                }
+                Category parentCategory = categoryRepository
+                        .findByIdAndDeletedFalse(request.getParentId())
+                        .orElseThrow(() ->
+                                new AppException(ErrorCode.CATEGORY_NOT_FOUND));
+                category.setParentId(parentCategory);
+            }
         }
         if (request.getImage() != null && !request.getImage().isEmpty()) {
             String oldPublicId = category.getImagePublicId();
@@ -141,5 +155,39 @@ public class CategoryServiceImpl implements CategoryService {
         return categoryMapper.toCategoryResponse(category);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public Page<CategoryResponse> filter(String name, String parentId, int page, int size) {
+        Specification<Category> specification = CategorySpec.isNotDeleted();
+        if (name != null && !name.isEmpty()) {
+            specification = specification.and(CategorySpec.likeName(name));
+        }
+        if (parentId != null && !parentId.isEmpty()) {
+            specification = specification.and(CategorySpec.hasParentId(parentId));
+        }
+        Pageable pageable = PageRequest.of(page - 1, size, Sort.by("createdAt").descending());
+        return categoryRepository.findAll(specification, pageable).map(categoryMapper::toCategoryResponse);
+    }
 
+    @Override
+    @Transactional
+    public List<String> getAllCategoryIds(String categoryId) {
+        List<Category> categories =
+                categoryRepository.findAllByDeletedFalse();
+
+        List<String> result = new ArrayList<>();
+
+        collectCategoryIds(categoryId, categories, result);
+
+        return result;
+    }
+
+    private void collectCategoryIds(String categoryId, List<Category> categories, List<String> result) {
+        result.add(categoryId);
+        for (Category category : categories) {
+            if (category.getParentId() != null && category.getParentId().getId().equals(categoryId)) {
+                collectCategoryIds(category.getId(), categories, result);
+            }
+        }
+    }
 }

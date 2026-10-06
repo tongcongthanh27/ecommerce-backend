@@ -13,6 +13,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
+
 @RestController
 @RequiredArgsConstructor
 @Validated
@@ -51,6 +53,22 @@ public class ProductVariantController {
                                                                    @RequestParam(name = "page_number") Integer pageNumber){
         return ApiResponse.<Page<ProductVariantResponse>>builder()
                 .result(productVariantService.getAllVariant(pageSize, pageNumber))
+                .build();
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping("/admin/product-variants/filter")
+    public ApiResponse<Page<ProductVariantResponse>> filter(
+            @RequestParam(name = "variant_name", required = false) String variantName,
+            @RequestParam(name = "sku", required = false) String sku,
+            @RequestParam(name = "product_id", required = false) String productId,
+            @RequestParam(name = "min_price", required = false) BigDecimal minPrice,
+            @RequestParam(name = "max_price", required = false) BigDecimal maxPrice,
+            @RequestParam(name = "page", defaultValue = "1") int page,
+            @RequestParam(name = "size", defaultValue = "10") int size
+    ) {
+        return ApiResponse.<Page<ProductVariantResponse>>builder()
+                .result(productVariantService.filter(variantName, sku, productId, minPrice, maxPrice, page, size))
                 .build();
     }
 }

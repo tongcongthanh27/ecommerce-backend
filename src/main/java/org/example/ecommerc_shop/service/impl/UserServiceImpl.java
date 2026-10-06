@@ -13,9 +13,12 @@ import org.example.ecommerc_shop.mapper.UserMapper;
 import org.example.ecommerc_shop.repository.UserRepository;
 import org.example.ecommerc_shop.service.CloudinaryService;
 import org.example.ecommerc_shop.service.UserService;
+import org.example.ecommerc_shop.service.specification.UserSpec;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -123,5 +126,33 @@ public class UserServiceImpl implements UserService {
             }
         }
         return userMapper.toUserResponse(user);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<UserResponse> filter(String username, String email, String fullName, UserRole userRole, int page, int size) {
+        Specification<User> specification =
+                (root, query, criteriaBuilder) ->
+                        criteriaBuilder.conjunction();
+        if (username != null && !username.isEmpty()) {
+            specification = specification.and(UserSpec.likeUsername(username)
+            );
+        }
+
+        if (email != null && !email.isEmpty()) {
+            specification = specification.and(UserSpec.likeEmail(email)
+            );
+        }
+
+        if (fullName != null && !fullName.isEmpty()) {
+            specification = specification.and(UserSpec.likeFullName(fullName)
+            );
+        }
+
+        if (userRole != null) {
+            specification = specification.and(UserSpec.hasRole(userRole));
+        }
+        Pageable pageable = PageRequest.of(page - 1, size, Sort.by("createdAt").descending());
+        return userRepository.findAll(specification, pageable).map(userMapper::toUserResponse);
     }
 }

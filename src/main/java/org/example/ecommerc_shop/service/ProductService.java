@@ -12,4 +12,6 @@ public interface ProductService {
     Page<ProductResponse> getAllProduct(Integer pageSize, Integer pageNumber);
     ProductDetailResponse getProductById(String id);
     ProductResponse updateProduct(String id, ProductUpdateRequest request);
+    Page<ProductResponse> filter(String name, String categoryId, int page, int size);
+    Page<ProductResponse> getProductByCategory(String categoryId, Integer pageSize, Integer pageNumber);
 }

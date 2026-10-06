@@ -14,4 +14,6 @@ public interface CategoryService {
     CategoryResponse getCategoryById(String id);
     List<CategoryResponse> getCategoryTree();
     CategoryResponse updateCategory(String id, CategoryUpdateRequest request);
+    Page<CategoryResponse> filter(String name, String parentId, int page, int size);
+    List<String> getAllCategoryIds(String categoryId);
 }
