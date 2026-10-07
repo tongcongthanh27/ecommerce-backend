@@ -3,6 +3,7 @@ package org.example.ecommerc_shop.entity;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import org.example.ecommerc_shop.common.OrderStatus;
 
 import java.io.Serializable;
 
@@ -20,8 +21,9 @@ public class TrackingLog extends BaseEntity implements Serializable {
     @JoinColumn(name = "order_id", nullable = false)
     private Order order;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 50)
-    private String status;
+    private OrderStatus status;
 
     @Column(length = 255)
     private String location;

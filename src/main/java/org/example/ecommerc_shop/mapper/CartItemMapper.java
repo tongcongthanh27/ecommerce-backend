@@ -9,7 +9,7 @@ import org.mapstruct.Mapping;
 public interface CartItemMapper {
 
     @Mapping(source = "id", target = "cartItemId")
-    @Mapping(source = "productVariant.id", target = "productVariantId")
+    @Mapping(source = "productVariant.sku", target = "sku")
     @Mapping(source = "productVariant.product.name", target = "productName")
     @Mapping(source = "productVariant.variantName", target = "variantName")
     @Mapping(source = "productVariant.imageUrl", target = "imageUrl")

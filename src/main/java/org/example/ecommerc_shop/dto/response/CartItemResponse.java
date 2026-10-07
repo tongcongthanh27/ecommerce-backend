@@ -1,6 +1,7 @@
 package org.example.ecommerc_shop.dto.response;
 
 import lombok.*;
+import org.example.ecommerc_shop.common.StockStatus;
 
 import java.io.Serializable;
 import java.math.BigDecimal;
@@ -13,7 +14,7 @@ import java.math.BigDecimal;
 public class CartItemResponse implements Serializable {
     private String cartItemId;
 
-    private String productVariantId;
+    private String sku;
 
     private String productName;
 
@@ -25,5 +26,5 @@ public class CartItemResponse implements Serializable {
 
     private Integer quantity;
 
-    private String stockStatus;
+    private StockStatus stockStatus;
 }
