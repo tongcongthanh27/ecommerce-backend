@@ -24,6 +24,7 @@ import java.util.List;
 public class CartController {
     private final CartService cartService;
 
+    @PreAuthorize("hasRole('USER')")
     @PostMapping("/items")
     public ApiResponse<CartItemResponse> addToCart(@Valid @RequestBody AddToCartRequest request, Principal principal){
 
@@ -32,6 +33,7 @@ public class CartController {
                 .build();
     }
 
+    @PreAuthorize("hasRole('USER')")
     @GetMapping("/items")
     public ApiResponse<CartResponse> getMyCart(Principal principal){
         return ApiResponse.<CartResponse>builder()
@@ -39,6 +41,7 @@ public class CartController {
                 .build();
     }
 
+    @PreAuthorize("hasRole('USER')")
     @DeleteMapping("/items/{cartItemId}")
     public ApiResponse<Void> deleteCartItem(@PathVariable String cartItemId, Principal principal){
         cartService.deleteCartItem(cartItemId, principal.getName());
@@ -47,6 +50,7 @@ public class CartController {
                 .build();
     }
 
+    @PreAuthorize("hasRole('USER')")
     @PutMapping("/items/{cartItemId}")
     public ApiResponse<CartItemResponse> updateQuantity(@PathVariable String cartItemId, Principal principal, @Valid @RequestBody UpdateCartItemRequest request){
         return ApiResponse.<CartItemResponse>builder()

@@ -30,7 +30,10 @@ public enum ErrorCode {
     PRODUCT_VARIANT_EXISTED(1019, "Product variant name already exists", HttpStatus.BAD_REQUEST),
     SKU_ALREADY_EXISTS(1020, "Product variant SKU already exists", HttpStatus.BAD_REQUEST),
     INSUFFICIENT_STOCK(1021, "Số lượng sản phẩm trong kho không đủ", HttpStatus.BAD_REQUEST),
-    OUT_OF_STOCK(1022, "Sản phẩm đã hết hàng", HttpStatus.BAD_REQUEST);
+    ORDER_NOT_FOUND(1022, "Đơn hàng không tồn tại", HttpStatus.NOT_FOUND),
+    OUT_OF_STOCK(1023, "Sản phẩm đã hết hàng", HttpStatus.BAD_REQUEST),
+    ORDER_CANNOT_BE_CANCELLED(1024, "Order cannot be cancelled at its current status", HttpStatus.BAD_REQUEST)
+    ;
             ;
 
     private int code = 1000;

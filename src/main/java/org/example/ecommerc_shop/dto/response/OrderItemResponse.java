@@ -17,7 +17,7 @@ public class OrderItemResponse {
 
     private String id;
 
-    private String productVariantId;
+    private String sku;
 
     private String variantName;
 
