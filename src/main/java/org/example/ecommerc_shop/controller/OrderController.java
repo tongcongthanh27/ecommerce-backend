@@ -2,8 +2,10 @@ package org.example.ecommerc_shop.controller;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.example.ecommerc_shop.common.OrderStatus;
 import org.example.ecommerc_shop.dto.ApiResponse;
 import org.example.ecommerc_shop.dto.request.OrderCreateRequest;
+import org.example.ecommerc_shop.dto.response.AdminOrderResponse;
 import org.example.ecommerc_shop.dto.response.OrderResponse;
 import org.example.ecommerc_shop.dto.response.OrderSummaryResponse;
 import org.example.ecommerc_shop.service.OrderService;
@@ -29,13 +31,25 @@ public class OrderController {
 
     @PreAuthorize("hasRole('USER')")
     @GetMapping("/orders")
-    public ApiResponse<Page<OrderSummaryResponse>> getAllOrders(@RequestParam(name = "page_size", defaultValue = "10") Integer pageSize,
+    public ApiResponse<Page<OrderSummaryResponse>> getMyOrders(@RequestParam(name = "page_size", defaultValue = "10") Integer pageSize,
                                                                 @RequestParam(name = "page_number", defaultValue = "1") Integer pageNumber,
                                                                 Principal principal){
         return ApiResponse.<Page<OrderSummaryResponse>>builder()
-                .result(orderService.getAllOrders(pageSize, pageNumber, principal.getName()))
+                .result(orderService.getMyOrders(pageSize, pageNumber, principal.getName()))
                 .build();
 
+    }
+
+    @PreAuthorize("hasRole('USER')")
+    @GetMapping("/orders/filter")
+    public ApiResponse<Page<OrderSummaryResponse>> getMyOrdersByStatus(
+            @RequestParam OrderStatus status,
+            @RequestParam(name = "page_size", defaultValue = "10") Integer pageSize,
+            @RequestParam(name = "page_number", defaultValue = "1") Integer pageNumber,
+            Principal principal) {
+        return ApiResponse.<Page<OrderSummaryResponse>>builder()
+                .result(orderService.getMyOrdersByStatus(pageSize, pageNumber, principal.getName(), status))
+                .build();
     }
 
     @PreAuthorize("hasRole('USER')")
@@ -55,7 +69,45 @@ public class OrderController {
                 .build();
     }
 
-//    @PreAuthorize("hasRole('ADMIN')")
-//    @GetMapping("/admin/orders")
-//    public ApiResponse<>
+    @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping("/admin/orders")
+    public ApiResponse<Page<AdminOrderResponse>> getAllOrders(@RequestParam(name = "page_size", defaultValue = "10") Integer pageSize,
+                                                                @RequestParam(name = "page_number", defaultValue = "1") Integer pageNumber){
+        return ApiResponse.<Page<AdminOrderResponse>>builder()
+                .result(orderService.getAllOrders(pageSize, pageNumber))
+                .build();
+
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping("/admin/orders/filter")
+    public ApiResponse<Page<AdminOrderResponse>> getAllOrdersByStatus(
+            @RequestParam OrderStatus status,
+            @RequestParam(name = "page_size", defaultValue = "10") Integer pageSize,
+            @RequestParam(name = "page_number", defaultValue = "1") Integer pageNumber) {
+        return ApiResponse.<Page<AdminOrderResponse>>builder()
+                .result(orderService.getAllOrdersByStatus(pageSize, pageNumber, status))
+                .build();
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping("/admin/orders/{orderId}")
+    public ApiResponse<OrderResponse> getOrderByIdForAdmin(
+            @PathVariable String orderId) {
+
+        return ApiResponse.<OrderResponse>builder()
+                .result(orderService.getOrderByIdForAdmin(orderId))
+                .build();
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @PatchMapping("/admin/orders/{orderId}/status")
+    public ApiResponse<OrderResponse> updateOrderStatus(
+            @PathVariable String orderId,
+            @RequestParam OrderStatus status) {
+
+        return ApiResponse.<OrderResponse>builder()
+                .result(orderService.updateOrderStatus(orderId, status))
+                .build();
+    }
 }

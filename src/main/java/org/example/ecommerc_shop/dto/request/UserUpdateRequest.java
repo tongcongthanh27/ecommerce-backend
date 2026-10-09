@@ -28,7 +28,11 @@ public class UserUpdateRequest implements Serializable {
     )
     private String phoneNumber;
 
-    private String address;
+    private String province;
+
+    private String city;
+
+    private String addressDetail;
 
     private MultipartFile avatarUrl;
 }

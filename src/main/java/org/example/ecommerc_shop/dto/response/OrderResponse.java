@@ -1,6 +1,9 @@
 package org.example.ecommerc_shop.dto.response;
 
 import lombok.*;
+import org.example.ecommerc_shop.common.OrderStatus;
+import org.example.ecommerc_shop.common.PaymentMethod;
+import org.example.ecommerc_shop.common.PaymentStatus;
 
 import java.io.Serializable;
 import java.math.BigDecimal;
@@ -17,11 +20,11 @@ public class OrderResponse implements Serializable {
 
     private String trackingNumber;
 
-    private String status;
+    private OrderStatus status;
 
-    private String paymentMethod;
+    private PaymentMethod paymentMethod;
 
-    private String paymentStatus;
+    private PaymentStatus paymentStatus;
 
     private List<OrderItemResponse> items;
 

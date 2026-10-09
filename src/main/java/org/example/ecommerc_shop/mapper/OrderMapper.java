@@ -2,6 +2,7 @@ package org.example.ecommerc_shop.mapper;
 
 import org.aspectj.weaver.ast.Or;
 import org.example.ecommerc_shop.dto.request.OrderCreateRequest;
+import org.example.ecommerc_shop.dto.response.AdminOrderResponse;
 import org.example.ecommerc_shop.dto.response.OrderResponse;
 import org.example.ecommerc_shop.dto.response.OrderSummaryResponse;
 import org.example.ecommerc_shop.entity.Order;
@@ -31,4 +32,10 @@ public interface OrderMapper {
     @Mapping(source = "status", target = "orderStatus")
     @Mapping(source = "createdAt", target = "orderDate")
     OrderSummaryResponse toOrderSummuryResponse(Order order);
+
+    @Mapping(source = "id", target = "orderId")
+    @Mapping(source = "createdAt", target = "createdDate")
+    @Mapping(source = "grandTotal", target = "amount")
+    @Mapping(source = "user.fullName", target = "customerName")
+    AdminOrderResponse toAdminOrderResponse(Order order);
 }

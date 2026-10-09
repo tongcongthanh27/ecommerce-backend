@@ -1,6 +1,7 @@
 package org.example.ecommerc_shop.repository;
 
 import lombok.RequiredArgsConstructor;
+import org.example.ecommerc_shop.common.UserRole;
 import org.example.ecommerc_shop.entity.User;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -24,5 +25,5 @@ public interface UserRepository extends JpaRepository<User, String>, JpaSpecific
 
     boolean existsByPhoneNumberAndDeletedFalseAndIdNot(String phoneNumber, String id);
     Optional<User> findByUsernameAndDeletedFalse(String username);
-
+    Optional<User> findByRoleAndProvinceAndDeletedFalse(UserRole role, String province);
 }

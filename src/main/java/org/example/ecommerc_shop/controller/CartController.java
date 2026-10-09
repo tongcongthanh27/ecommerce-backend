@@ -27,7 +27,6 @@ public class CartController {
     @PreAuthorize("hasRole('USER')")
     @PostMapping("/items")
     public ApiResponse<CartItemResponse> addToCart(@Valid @RequestBody AddToCartRequest request, Principal principal){
-
         return ApiResponse.<CartItemResponse>builder()
                 .result(cartService.addToCart(request, principal.getName()))
                 .build();

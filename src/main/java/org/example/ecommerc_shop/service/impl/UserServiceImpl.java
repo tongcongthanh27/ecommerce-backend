@@ -113,9 +113,9 @@ public class UserServiceImpl implements UserService {
             }
             user.setPhoneNumber(request.getPhoneNumber());
         }
-        if (request.getAddress() != null) {
-            user.setAddress(request.getAddress());
-        }
+        if (request.getProvince() != null) user.setProvince(request.getProvince());
+        if (request.getCity() != null) user.setCity(request.getCity());
+        if (request.getAddressDetail() != null) user.setAddressDetail(request.getAddressDetail());
         if (request.getAvatarUrl() != null && !request.getAvatarUrl().isEmpty()) {
             String oldPublicId = user.getAvatarPublicId();
             CloudinaryUploadResponse response = cloudinaryService.uploadImage(request.getAvatarUrl());
@@ -132,8 +132,7 @@ public class UserServiceImpl implements UserService {
     @Transactional(readOnly = true)
     public Page<UserResponse> filter(String username, String email, String fullName, UserRole userRole, int page, int size) {
         Specification<User> specification =
-                (root, query, criteriaBuilder) ->
-                        criteriaBuilder.conjunction();
+                (root, query, criteriaBuilder) -> criteriaBuilder.isFalse(root.get("deleted"));
         if (username != null && !username.isEmpty()) {
             specification = specification.and(UserSpec.likeUsername(username)
             );

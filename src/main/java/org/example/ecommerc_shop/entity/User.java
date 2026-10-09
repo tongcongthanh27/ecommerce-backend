@@ -36,8 +36,14 @@ public class User extends BaseEntity implements Serializable {
     @Column(name = "phone_number")
     private String phoneNumber;
 
-    @Column(nullable = false)
-    private String address;
+    @Column(name = "province", nullable = false)
+    private String province;
+
+    @Column(name = "city", nullable = false)
+    private String city;
+
+    @Column(name = "address_detail", nullable = false)
+    private String addressDetail;
 
     @Column(name = "avatar_url")
     private String avatarUrl;

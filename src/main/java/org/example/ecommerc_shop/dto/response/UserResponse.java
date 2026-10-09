@@ -19,7 +19,11 @@ public class UserResponse {
 
     private String phoneNumber;
 
-    private String address;
+    private String province;
+
+    private String city;
+
+    private String addressDetail;
 
     private String avatarUrl;
 }

@@ -32,7 +32,9 @@ public enum ErrorCode {
     INSUFFICIENT_STOCK(1021, "Số lượng sản phẩm trong kho không đủ", HttpStatus.BAD_REQUEST),
     ORDER_NOT_FOUND(1022, "Đơn hàng không tồn tại", HttpStatus.NOT_FOUND),
     OUT_OF_STOCK(1023, "Sản phẩm đã hết hàng", HttpStatus.BAD_REQUEST),
-    ORDER_CANNOT_BE_CANCELLED(1024, "Order cannot be cancelled at its current status", HttpStatus.BAD_REQUEST)
+    ORDER_CANNOT_BE_CANCELLED(1024, "Order cannot be cancelled at its current status", HttpStatus.BAD_REQUEST),
+    INVALID_ORDER_STATUS_TRANSITION(1025, "Invalid order status transition", HttpStatus.BAD_REQUEST),
+    SHIPPER_NOT_FOUND(1026, "COULD NOT FOUNT SHIPPER", HttpStatus.BAD_REQUEST)
     ;
             ;
 

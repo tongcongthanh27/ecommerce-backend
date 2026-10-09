@@ -33,8 +33,14 @@ public class UserCreateRequest {
     @Pattern(regexp = "^(0|\\+84)[3|5|7|8|9][0-9]{8}$", message = "Số điện thoại không hợp lệ")
     private String phoneNumber;
 
-    @NotBlank(message = "Địa chỉ không được để trống")
-    private String address;
+    @NotBlank(message = "Tỉnh/thành phố không được để trống")
+    private String province;
+
+    @NotBlank(message = "Quận/huyện không được để trống")
+    private String city;
+
+    @NotBlank(message = "Địa chỉ chi tiết không được để trống")
+    private String addressDetail;
 
     private MultipartFile avatarUrl;
 }
