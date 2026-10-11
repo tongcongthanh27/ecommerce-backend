@@ -7,8 +7,9 @@ import org.springframework.http.HttpStatusCode;
 @Getter
 // cac loi bat dc thi da liet ke
 // loi nao ko bat dc se hien ra 9999
-public enum ErrorCode {
+public enum  ErrorCode {
     UNCATEGORIZED_EXCEPTION(9999, "Uncategorized error", HttpStatus.INTERNAL_SERVER_ERROR),
+    UNAUTHORIZED(403, "You are not allowed to access this order", HttpStatus.UNAUTHORIZED),
     USERNOTFOUND(1001, "User not found", HttpStatus.BAD_REQUEST),
     CARTNOTFOUND(1002, "Cart not found", HttpStatus.BAD_REQUEST),
     VARIANTNOTFOUND(1003, "Variant not found", HttpStatus.BAD_REQUEST),

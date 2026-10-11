@@ -21,4 +21,7 @@ public interface OrderRepository extends JpaRepository<Order, String>, JpaSpecif
 
     @EntityGraph(attributePaths = {"user"})
     Page<Order> findAllByDeletedFalse(Pageable pageable);
+
+    @EntityGraph(attributePaths = {"user"})
+    Page<Order> findAllByShipperIdAndDeletedFalse(String id, Pageable pageable);
 }

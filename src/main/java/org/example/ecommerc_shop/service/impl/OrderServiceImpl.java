@@ -1,15 +1,9 @@
 package org.example.ecommerc_shop.service.impl;
 
 import lombok.RequiredArgsConstructor;
-import org.example.ecommerc_shop.common.DiscountType;
-import org.example.ecommerc_shop.common.OrderStatus;
-import org.example.ecommerc_shop.common.PaymentStatus;
-import org.example.ecommerc_shop.common.UserRole;
+import org.example.ecommerc_shop.common.*;
 import org.example.ecommerc_shop.dto.request.OrderCreateRequest;
-import org.example.ecommerc_shop.dto.response.AdminOrderResponse;
-import org.example.ecommerc_shop.dto.response.OrderItemResponse;
-import org.example.ecommerc_shop.dto.response.OrderResponse;
-import org.example.ecommerc_shop.dto.response.OrderSummaryResponse;
+import org.example.ecommerc_shop.dto.response.*;
 import org.example.ecommerc_shop.entity.*;
 import org.example.ecommerc_shop.exception.AppException;
 import org.example.ecommerc_shop.exception.ErrorCode;
@@ -45,6 +39,7 @@ public class OrderServiceImpl implements OrderService {
     private final OrderItemRepository orderItemRepository;
     private final OrderItemMapper orderItemMapper;
     private final TrackingLogRepository trackingLogRepository;
+    private final NotificationRepository notificationRepository;
 
     @Override
     @Transactional
@@ -253,6 +248,82 @@ public class OrderServiceImpl implements OrderService {
         return orderMapper.toOrderResponse(order);
     }
 
+    @Override
+    @Transactional
+    public Page<ShipperOrderResponse> getAllOrderForShipper(Integer pageSize, Integer pageNumber, String shipperName) {
+        User shipper = userRepository.findByUsernameAndDeletedFalse(shipperName).orElseThrow(
+                () -> new AppException(ErrorCode.USERNOTFOUND)
+        );
+        Pageable pageable = PageRequest.of(pageNumber -1 , pageSize, Sort.by("createdAt").descending());
+        Page<Order> orderPage = orderRepository.findAllByShipperIdAndDeletedFalse(shipper.getId(), pageable);
+        return orderPage.map(orderMapper::toShipperOrderResponse);
+    }
+
+    @Override
+    @Transactional
+    public ShipperOrderResponse updateOrderStatusByShipper(String orderId, OrderStatus orderStatus, String shipperName) {
+        Order order = orderRepository.findByIdAndDeletedFalse(orderId).orElseThrow(
+                () -> new AppException(ErrorCode.ORDER_NOT_FOUND));
+        if (order.getShipper() == null || !order.getShipper().getUsername().equals(shipperName)) {
+            throw new AppException(ErrorCode.UNAUTHORIZED);
+        }
+        boolean allowedByShipper = (order.getStatus() == OrderStatus.PICKING && orderStatus == OrderStatus.SHIPPING)
+                        || (order.getStatus() == OrderStatus.SHIPPING && (orderStatus == OrderStatus.DELIVERED || orderStatus == OrderStatus.FAILED));
+        if (!allowedByShipper || !order.getStatus().canTransitionTo(orderStatus)) {
+            throw new AppException(
+                    ErrorCode.INVALID_ORDER_STATUS_TRANSITION
+            );
+        }
+        order.setStatus(orderStatus);
+        createOrderNotification(order, orderStatus);
+        TrackingLog trackingLog = new TrackingLog();
+        trackingLog.setOrder(order);
+        trackingLog.setStatus(orderStatus);
+        switch (orderStatus) {
+            case SHIPPING:
+                trackingLog.setNote("Shipper is delivering the order");
+                break;
+            case DELIVERED:
+                trackingLog.setNote("Order delivered successfully");
+                break;
+            case FAILED:
+                trackingLog.setNote("Delivery failed");
+                break;
+            default:
+                trackingLog.setNote("Order status updated by shipper");
+        }
+        trackingLogRepository.save(trackingLog);
+        return orderMapper.toShipperOrderResponse(order);
+    }
+
+    private void createOrderNotification(Order order, OrderStatus status) {
+        String title;
+        String content;
+        switch (status) {
+            case SHIPPING -> {
+                title = "Đơn hàng đang được giao";
+                content = "Đơn hàng " + order.getTrackingNumber()
+                        + " đang được shipper giao đến bạn.";
+            }
+            case DELIVERED -> {
+                title = "Giao hàng thành công";
+                content = "Đơn hàng " + order.getTrackingNumber()
+                        + " đã được giao thành công.";
+            }
+            default -> {
+                return;
+            }
+        }
+        Notification notification = new Notification();
+        notification.setUser(order.getUser());
+        notification.setOrder(order);
+        notification.setType(NotificationType.EMAIL);
+        notification.setTitle(title);
+        notification.setContent(content);
+        notification.setStatus(NotificationStatus.PENDING);
+
+        notificationRepository.save(notification);
+    }
     private String generateTrackingNumber() {
         String randomCode = UUID.randomUUID()
                 .toString()

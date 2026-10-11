@@ -8,6 +8,7 @@ import org.example.ecommerc_shop.dto.request.OrderCreateRequest;
 import org.example.ecommerc_shop.dto.response.AdminOrderResponse;
 import org.example.ecommerc_shop.dto.response.OrderResponse;
 import org.example.ecommerc_shop.dto.response.OrderSummaryResponse;
+import org.example.ecommerc_shop.dto.response.ShipperOrderResponse;
 import org.example.ecommerc_shop.service.OrderService;
 import org.springframework.data.domain.Page;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -110,4 +111,24 @@ public class OrderController {
                 .result(orderService.updateOrderStatus(orderId, status))
                 .build();
     }
+
+   @PreAuthorize("hasRole('SHIPPER')")
+   @GetMapping("/shipper/orders/")
+   public ApiResponse<Page<ShipperOrderResponse>> getAllOrderForShipper(@RequestParam(name = "page_size", defaultValue = "10") Integer pageSize,
+                                                                        @RequestParam(name = "page_number", defaultValue = "1") Integer pageNumber,
+                                                                        Principal principal){
+        return ApiResponse.<Page<ShipperOrderResponse>>builder()
+                .result(orderService.getAllOrderForShipper(pageSize, pageNumber, principal.getName()))
+                .build();
+   }
+
+   @PreAuthorize("hasRole('SHIPPER')")
+    @PatchMapping("/shipper/orders/{orderId}/status")
+    public ApiResponse<ShipperOrderResponse> updateOrderStatusByShipper(@PathVariable String orderId,
+                                                                        @RequestParam("status") OrderStatus status,
+                                                                        Principal principal){
+        return ApiResponse.<ShipperOrderResponse>builder()
+                .result(orderService.updateOrderStatusByShipper(orderId, status, principal.getName()))
+                .build();
+   }
 }
