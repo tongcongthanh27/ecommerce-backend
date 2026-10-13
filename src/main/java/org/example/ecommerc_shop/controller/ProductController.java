@@ -8,6 +8,8 @@ import org.example.ecommerc_shop.dto.request.ProductUpdateRequest;
 import org.example.ecommerc_shop.dto.response.ProductDetailResponse;
 import org.example.ecommerc_shop.dto.response.ProductResponse;
 import org.example.ecommerc_shop.service.ProductService;
+import org.example.ecommerc_shop.exception.AppException;
+import org.example.ecommerc_shop.exception.ErrorCode;
 import org.springframework.data.domain.Page;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;

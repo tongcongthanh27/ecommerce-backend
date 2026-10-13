@@ -34,14 +34,17 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional
     public UserResponse createUser(UserCreateRequest request) {
+        request.setUsername(request.getUsername().trim());
+        request.setEmail(request.getEmail().trim().toLowerCase(java.util.Locale.ROOT));
+        request.setPhoneNumber(request.getPhoneNumber().trim());
         if (userRepository.existsByUsernameAndDeletedFalse(request.getUsername())) {
-            throw new AppException(ErrorCode.USERNAME_ALREADY_EXIST);
+            throw new AppException(ErrorCode.USERNAME_ALREADY_EXISTS);
         }
         if (userRepository.existsByEmailAndDeletedFalse(request.getEmail())) {
-            throw new AppException(ErrorCode.EMAIL_ALREADY_EXIST);
+            throw new AppException(ErrorCode.EMAIL_ALREADY_EXISTS);
         }
         if (userRepository.existsByPhoneNumberAndDeletedFalse(request.getPhoneNumber())) {
-            throw new AppException(ErrorCode.PHONE_ALREADY_EXIST);
+            throw new AppException(ErrorCode.PHONE_NUMBER_ALREADY_EXISTS);
         }
         User user = userMapper.toUser(request);
         user.setPassword(passwordEncoder.encode(request.getPassword()));
@@ -66,7 +69,7 @@ public class UserServiceImpl implements UserService {
     @Transactional
     public void deleteUser(String id) {
         User user = userRepository.findByIdAndDeletedFalse(id)
-                .orElseThrow(() -> new AppException(ErrorCode.USERNOTFOUND));
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
         user.setDeleted(true);
     }
 
@@ -74,7 +77,7 @@ public class UserServiceImpl implements UserService {
     @Transactional
     public UserResponse getUserById(String id) {
         User user = userRepository.findByIdAndDeletedFalse(id)
-                .orElseThrow(() -> new AppException(ErrorCode.USERNOTFOUND));
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
         return userMapper.toUserResponse(user);
     }
 
@@ -82,7 +85,7 @@ public class UserServiceImpl implements UserService {
     @Transactional
     public UserResponse updateRole(String id, UserRole role) {
         User user = userRepository.findByIdAndDeletedFalse(id)
-                .orElseThrow(() -> new AppException(ErrorCode.USERNOTFOUND));
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
         user.setRole(role);
         return userMapper.toUserResponse(user);
     }
@@ -91,36 +94,53 @@ public class UserServiceImpl implements UserService {
     @Transactional
     public UserResponse updateUser(String id, UserUpdateRequest request) {
         User user = userRepository.findByIdAndDeletedFalse(id)
-                .orElseThrow(() -> new AppException(ErrorCode.USERNOTFOUND));
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
         if (request.getUsername() != null) {
-            if (userRepository.existsByUsernameAndDeletedFalseAndIdNot(request.getUsername(), id)) {
-                throw new AppException(ErrorCode.USERNAME_ALREADY_EXIST);
+            if (request.getUsername().isBlank()) throw new AppException(ErrorCode.INVALID_USER_PROFILE);
+            String username = request.getUsername().trim();
+            if (userRepository.existsByUsernameAndDeletedFalseAndIdNot(username, id)) {
+                throw new AppException(ErrorCode.USERNAME_ALREADY_EXISTS);
             }
-            user.setUsername(request.getUsername());
+            user.setUsername(username);
         }
         if (request.getEmail() != null) {
-            if (userRepository.existsByEmailAndDeletedFalseAndIdNot(request.getEmail(), id)) {
-                throw new AppException(ErrorCode.EMAIL_ALREADY_EXIST);
+            if (request.getEmail().isBlank()) throw new AppException(ErrorCode.INVALID_USER_PROFILE);
+            String email = request.getEmail().trim().toLowerCase(java.util.Locale.ROOT);
+            if (userRepository.existsByEmailAndDeletedFalseAndIdNot(email, id)) {
+                throw new AppException(ErrorCode.EMAIL_ALREADY_EXISTS);
             }
-            user.setEmail(request.getEmail());
+            user.setEmail(email);
         }
         if (request.getFullName() != null) {
-            user.setFullName(request.getFullName());
+            if (request.getFullName().isBlank()) throw new AppException(ErrorCode.INVALID_USER_PROFILE);
+            user.setFullName(request.getFullName().trim());
         }
         if (request.getPhoneNumber() != null) {
-            if (userRepository.existsByPhoneNumberAndDeletedFalseAndIdNot(request.getPhoneNumber(), id)) {
-                throw new AppException(ErrorCode.PHONE_ALREADY_EXIST);
+            if (request.getPhoneNumber().isBlank()) throw new AppException(ErrorCode.INVALID_USER_PROFILE);
+            String phoneNumber = request.getPhoneNumber().trim();
+            if (userRepository.existsByPhoneNumberAndDeletedFalseAndIdNot(phoneNumber, id)) {
+                throw new AppException(ErrorCode.PHONE_NUMBER_ALREADY_EXISTS);
             }
-            user.setPhoneNumber(request.getPhoneNumber());
+            user.setPhoneNumber(phoneNumber);
         }
-        if (request.getProvince() != null) user.setProvince(request.getProvince());
-        if (request.getCity() != null) user.setCity(request.getCity());
-        if (request.getAddressDetail() != null) user.setAddressDetail(request.getAddressDetail());
+        if (request.getProvince() != null) {
+            if (request.getProvince().isBlank()) throw new AppException(ErrorCode.INVALID_USER_PROFILE);
+            user.setProvince(request.getProvince().trim());
+        }
+        if (request.getCity() != null) {
+            if (request.getCity().isBlank()) throw new AppException(ErrorCode.INVALID_USER_PROFILE);
+            user.setCity(request.getCity().trim());
+        }
+        if (request.getAddressDetail() != null) {
+            if (request.getAddressDetail().isBlank()) throw new AppException(ErrorCode.INVALID_USER_PROFILE);
+            user.setAddressDetail(request.getAddressDetail().trim());
+        }
         if (request.getAvatarUrl() != null && !request.getAvatarUrl().isEmpty()) {
             String oldPublicId = user.getAvatarPublicId();
             CloudinaryUploadResponse response = cloudinaryService.uploadImage(request.getAvatarUrl());
             user.setAvatarPublicId(response.getPublicId());
             user.setAvatarUrl(response.getUrl());
+            // Keep the previous image available if the replacement upload fails.
             if (oldPublicId != null && !oldPublicId.isBlank()) {
                 cloudinaryService.deleteImage(oldPublicId);
             }

@@ -45,10 +45,11 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional
     public ProductResponse createProduct(ProductCreateRequest request) {
+        request.setName(request.getName().trim());
         Category category = categoryRepository.findByIdAndDeletedFalse(request.getCategoryId())
                 .orElseThrow(() -> new AppException(ErrorCode.CATEGORY_NOT_FOUND));
         if (productRepository.existsByNameAndDeletedFalse(request.getName())){
-            throw new AppException(ErrorCode.PRODUCT_EXISTED);
+            throw new AppException(ErrorCode.PRODUCT_NAME_ALREADY_EXISTS);
         }
         Product product = productMapper.toProduct(request);
         product.setCategory(category);
@@ -60,6 +61,9 @@ public class ProductServiceImpl implements ProductService {
 
             product.setThumbnailUrl(uploadResult.getUrl());
             product.setThumbnailPublicId(uploadResult.getPublicId());
+        }
+        if (Boolean.TRUE.equals(category.getDeleted())) {
+            throw new AppException(ErrorCode.CATEGORY_NOT_FOUND);
         }
         productRepository.save(product);
         return productMapper.toProductResponse(product);
@@ -116,24 +120,27 @@ public class ProductServiceImpl implements ProductService {
                     .orElseThrow(() -> new AppException(ErrorCode.CATEGORY_NOT_FOUND));
             product.setCategory(category);
         }
+        if (Boolean.TRUE.equals(product.getCategory().getDeleted())) {
+            throw new AppException(ErrorCode.CATEGORY_NOT_FOUND);
+        }
         if (request.getName() != null && !request.getName().isBlank()) {
-            if (!product.getName().equals(request.getName()) && productRepository.existsByNameAndDeletedFalseAndIdNot(request.getName(), id)) {
-                throw new AppException(ErrorCode.PRODUCT_EXISTED);
+            String normalizedName = request.getName().trim();
+            if (!product.getName().equals(normalizedName) && productRepository.existsByNameAndDeletedFalseAndIdNot(normalizedName, id)) {
+                throw new AppException(ErrorCode.PRODUCT_NAME_ALREADY_EXISTS);
             }
-            product.setName(request.getName());
+            product.setName(normalizedName);
         }
         if (request.getDescription() != null) {
             product.setDescription(request.getDescription());
         }
         if (request.getImage() != null && !request.getImage().isEmpty()) {
-            if (product.getThumbnailPublicId() != null) {
-                cloudinaryService.deleteImage(
-                        product.getThumbnailPublicId()
-                );
-            }
+            String oldPublicId = product.getThumbnailPublicId();
             CloudinaryUploadResponse uploadResult = cloudinaryService.uploadImage(request.getImage());
             product.setThumbnailUrl(uploadResult.getUrl());
             product.setThumbnailPublicId(uploadResult.getPublicId());
+            if (oldPublicId != null && !oldPublicId.isBlank()) {
+                cloudinaryService.deleteImage(oldPublicId);
+            }
         }
         return productMapper.toProductResponse(product);
     }

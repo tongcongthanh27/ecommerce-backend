@@ -41,4 +41,8 @@ public class ProductVariant extends BaseEntity implements Serializable {
 
     @Column(name = "quantity_in_stock")
     private Integer quantityInStock;
+
+    @Version
+    @Column(nullable = false)
+    private Long version;
 }

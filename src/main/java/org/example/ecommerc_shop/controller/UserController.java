@@ -8,6 +8,8 @@ import org.example.ecommerc_shop.dto.request.UserCreateRequest;
 import org.example.ecommerc_shop.dto.request.UserUpdateRequest;
 import org.example.ecommerc_shop.dto.response.UserResponse;
 import org.example.ecommerc_shop.service.UserService;
+import org.example.ecommerc_shop.exception.AppException;
+import org.example.ecommerc_shop.exception.ErrorCode;
 import org.springframework.data.domain.Page;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
@@ -80,6 +82,10 @@ public class UserController {
     public ApiResponse<UserResponse> updateRole(
             @PathVariable String userId,
             @RequestParam UserRole role) {
+
+        if (role == null) {
+            throw new AppException(ErrorCode.INVALID_USER_ROLE);
+        }
 
         return ApiResponse.<UserResponse>builder()
                 .result(userService.updateRole(userId, role))

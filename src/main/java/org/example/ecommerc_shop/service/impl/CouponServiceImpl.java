@@ -22,6 +22,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.Locale;
 
 @Service
 @RequiredArgsConstructor
@@ -32,10 +33,19 @@ public class CouponServiceImpl implements CouponService {
     @Override
     @Transactional
     public CouponResponse createCoupon(CouponCreateRequest request) {
-        if (couponRepository.existsByCodeAndDeletedFalse(request.getCode())) {
+        validateCoupon(request.getDiscountType(), request.getDiscountValue(), request.getStartDate(), request.getEndDate());
+        if (request.getMinOrderValue() != null && request.getMinOrderValue().signum() < 0
+                || request.getMaxDiscountAmount() != null && request.getMaxDiscountAmount().signum() < 0
+                || request.getUsageLimit() != null && request.getUsageLimit() < 1) {
+            throw new AppException(ErrorCode.INVALID_COUPON_VALUES);
+        }
+        String normalizedCode = request.getCode().trim().toUpperCase(Locale.ROOT);
+        if (couponRepository.existsByCodeAndDeletedFalse(normalizedCode)
+                || couponRepository.findByCodeAndDeletedFalse(request.getCode().trim()).isPresent()) {
             throw new AppException(ErrorCode.COUPON_ALREADY_EXISTS);
         }
         Coupon coupon = couponMapper.toCoupon(request);
+        coupon.setCode(normalizedCode);
         coupon.setDeleted(false);
         couponRepository.save(coupon);
         return couponMapper.toCouponResponse(coupon);
@@ -53,7 +63,7 @@ public class CouponServiceImpl implements CouponService {
     @Transactional
     public void deleteCoupon(String id) {
         Coupon coupon = couponRepository.findByIdAndDeletedFalse(id)
-                .orElseThrow(() -> new AppException(ErrorCode.COUPONNOTFOUND));
+                .orElseThrow(() -> new AppException(ErrorCode.COUPON_NOT_FOUND));
         coupon.setDeleted(true);
     }
 
@@ -61,16 +71,37 @@ public class CouponServiceImpl implements CouponService {
     @Transactional
     public CouponResponse updateCoupon(String id, CouponUpdateRequest request) {
         Coupon coupon = couponRepository.findByIdAndDeletedFalse(id)
-                .orElseThrow(() -> new AppException(ErrorCode.COUPONNOTFOUND));
+                .orElseThrow(() -> new AppException(ErrorCode.COUPON_NOT_FOUND));
+        if (request.getMinOrderValue() != null && request.getMinOrderValue().signum() < 0
+                || request.getMaxDiscountAmount() != null && request.getMaxDiscountAmount().signum() < 0
+                || request.getUsageLimit() != null && request.getUsageLimit() < 1) {
+            throw new AppException(ErrorCode.INVALID_COUPON_VALUES);
+        }
+        validateCoupon(
+                request.getDiscountType() != null ? request.getDiscountType() : coupon.getDiscountType(),
+                request.getDiscountValue() != null ? request.getDiscountValue() : coupon.getDiscountValue(),
+                request.getStartDate() != null ? request.getStartDate() : coupon.getStartDate(),
+                request.getEndDate() != null ? request.getEndDate() : coupon.getEndDate());
         couponMapper.updateCoupon(request, coupon);
         return couponMapper.toCouponResponse(coupon);
+    }
+
+    private void validateCoupon(DiscountType discountType, java.math.BigDecimal discountValue,
+                                LocalDateTime startDate, LocalDateTime endDate) {
+        if (startDate != null && endDate != null && !endDate.isAfter(startDate)) {
+            throw new AppException(ErrorCode.INVALID_COUPON_DATES);
+        }
+        if (discountType == DiscountType.PERCENTAGE && discountValue != null
+                && discountValue.compareTo(java.math.BigDecimal.valueOf(100)) > 0) {
+            throw new AppException(ErrorCode.INVALID_COUPON_DISCOUNT);
+        }
     }
 
     @Override
     @Transactional(readOnly = true)
     public CouponResponse getCouponById(String id) {
         Coupon coupon = couponRepository.findByIdAndDeletedFalse(id)
-                .orElseThrow(() -> new AppException(ErrorCode.COUPONNOTFOUND));
+                .orElseThrow(() -> new AppException(ErrorCode.COUPON_NOT_FOUND));
         return couponMapper.toCouponResponse(coupon);
     }
 
@@ -78,7 +109,8 @@ public class CouponServiceImpl implements CouponService {
     @Transactional
     public CouponResponse updateStatus(String id, CouponStatus status) {
         Coupon coupon = couponRepository.findByIdAndDeletedFalse(id)
-                .orElseThrow(() -> new AppException(ErrorCode.COUPONNOTFOUND));
+                .orElseThrow(() -> new AppException(ErrorCode.COUPON_NOT_FOUND));
+        if (status == null) throw new AppException(ErrorCode.INVALID_COUPON_VALUES);
         coupon.setStatus(status);
         return couponMapper.toCouponResponse(coupon);
     }
@@ -97,8 +129,8 @@ public class CouponServiceImpl implements CouponService {
             int size
     ) {
         Specification<Coupon> specification = CouponSpec.isNotDeleted();
-        if (code != null && !code.isEmpty()) {
-            specification = specification.and(CouponSpec.likeCode(code));
+        if (code != null && !code.isBlank()) {
+            specification = specification.and(CouponSpec.likeCode(code.trim()));
         }
         if (status != null) {
             specification = specification.and(CouponSpec.hasStatus(status));

@@ -25,6 +25,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.Locale;
 
 @Service
 @RequiredArgsConstructor
@@ -39,13 +40,17 @@ public class ProductVariantServiceImpl implements ProductVariantService {
     public ProductVariantResponse createVariant(String id, ProductVariantCreateRequest request) {
         Product product = productRepository.findByIdAndDeletedFalse(id)
                 .orElseThrow(() -> new AppException(ErrorCode.PRODUCT_NOT_FOUND));
-        if (productVariantRepository.existsProductVariantByVariantNameAndDeletedFalse(request.getVariantName())) {
-            throw new AppException(ErrorCode.PRODUCT_VARIANT_EXISTED);
+        if (productVariantRepository.existsByProduct_IdAndVariantNameAndDeletedFalse(
+                id, request.getVariantName().trim())) {
+            throw new AppException(ErrorCode.PRODUCT_VARIANT_NAME_ALREADY_EXISTS);
         }
-        if (productVariantRepository.existsProductVariantBySkuAndDeletedFalse(request.getSku())) {
-            throw new AppException(ErrorCode.PRODUCT_VARIANT_EXISTED);
+        String normalizedSku = request.getSku().trim().toUpperCase(Locale.ROOT);
+        if (productVariantRepository.existsProductVariantBySkuAndDeletedFalse(normalizedSku)) {
+            throw new AppException(ErrorCode.PRODUCT_VARIANT_NAME_ALREADY_EXISTS);
         }
         ProductVariant productVariant = productVariantMapper.toVariant(request);
+        productVariant.setVariantName(request.getVariantName().trim());
+        productVariant.setSku(normalizedSku);
         if (request.getImage() != null
                 && !request.getImage().isEmpty()) {
 
@@ -58,11 +63,7 @@ public class ProductVariantServiceImpl implements ProductVariantService {
         productVariant.setProduct(product);
         productVariantRepository.save(productVariant);
         ProductVariantResponse response = productVariantMapper.toVariantResponse(productVariant);
-        if (request.getQuantityInStock() > 0) {
-            response.setStockStatus(String.valueOf(StockStatus.IN_STOCK));
-        } else {
-            response.setStockStatus(String.valueOf(StockStatus.OUT_OF_STOCK));
-        }
+        response.setStockStatus(stockStatus(productVariant));
         return response;
     }
 
@@ -71,7 +72,7 @@ public class ProductVariantServiceImpl implements ProductVariantService {
     public void deleteVariant(String id) {
         ProductVariant productVariant = productVariantRepository.findProductVariantByIdAndDeletedFalse(id);
         if (productVariant == null) {
-            throw new AppException(ErrorCode.VARIANTNOTFOUND);
+            throw new AppException(ErrorCode.PRODUCT_VARIANT_NOT_FOUND);
         }
         productVariant.setDeleted(true);
     }
@@ -81,38 +82,57 @@ public class ProductVariantServiceImpl implements ProductVariantService {
     public ProductVariantResponse updateVariant(String variantId, ProductVariantUpdateRequest request) {
         ProductVariant productVariant = productVariantRepository.findProductVariantByIdAndDeletedFalse(variantId);
         if (productVariant == null) {
-            throw new AppException(ErrorCode.VARIANTNOTFOUND);
+            throw new AppException(ErrorCode.PRODUCT_VARIANT_NOT_FOUND);
         }
-        if (request.getVariantName() != null && productVariantRepository
-                .existsProductVariantByVariantNameAndIdNotAndDeletedFalse(request.getVariantName(), variantId)) {
-            throw new AppException(ErrorCode.PRODUCT_VARIANT_EXISTED);
+        if (request.getVariantName() != null && !request.getVariantName().isBlank() && productVariantRepository
+                .existsByProduct_IdAndVariantNameAndDeletedFalseAndIdNot(
+                        productVariant.getProduct().getId(), request.getVariantName().trim(), variantId)) {
+            throw new AppException(ErrorCode.PRODUCT_VARIANT_NAME_ALREADY_EXISTS);
         }
-        if (request.getSku() != null && productVariantRepository
-                .existsProductVariantBySkuAndIdNotAndDeletedFalse(request.getSku(), variantId)) {
-            throw new AppException(ErrorCode.SKU_ALREADY_EXISTS);
+        if (request.getVariantName() != null && request.getVariantName().isBlank()) {
+            throw new AppException(ErrorCode.INVALID_PRODUCT_VARIANT);
+        }
+        if (request.getSku() != null && request.getSku().isBlank()) {
+            throw new AppException(ErrorCode.INVALID_PRODUCT_VARIANT);
+        }
+        String normalizedSku = request.getSku() == null ? null : request.getSku().trim().toUpperCase(Locale.ROOT);
+        if (normalizedSku != null && productVariantRepository
+                .existsProductVariantBySkuAndIdNotAndDeletedFalse(normalizedSku, variantId)) {
+            throw new AppException(ErrorCode.PRODUCT_VARIANT_SKU_ALREADY_EXISTS);
         }
         productVariantMapper.updateVariant(request, productVariant);
+        if (request.getVariantName() != null) productVariant.setVariantName(request.getVariantName().trim());
+        if (normalizedSku != null) productVariant.setSku(normalizedSku);
         if (request.getImage() != null && !request.getImage().isEmpty()) {
+            String oldPublicId = productVariant.getImagePublicId();
             CloudinaryUploadResponse uploadResult = cloudinaryService.uploadImage(request.getImage());
             productVariant.setImageUrl(uploadResult.getUrl());
             productVariant.setImagePublicId(uploadResult.getPublicId());
+            if (oldPublicId != null && !oldPublicId.isBlank()) {
+                cloudinaryService.deleteImage(oldPublicId);
+            }
         }
         productVariantRepository.save(productVariant);
         ProductVariantResponse response =
                 productVariantMapper.toVariantResponse(productVariant);
-        if (productVariant.getQuantityInStock() > 0) {
-            response.setStockStatus(String.valueOf(StockStatus.IN_STOCK));
-        } else {
-            response.setStockStatus(String.valueOf(StockStatus.OUT_OF_STOCK));
-        }
+        response.setStockStatus(stockStatus(productVariant));
         return response;
+    }
+
+    private String stockStatus(ProductVariant variant) {
+        return String.valueOf(variant.getQuantityInStock() != null && variant.getQuantityInStock() > 0
+                ? StockStatus.IN_STOCK : StockStatus.OUT_OF_STOCK);
     }
 
     @Override
     public Page<ProductVariantResponse> getAllVariant(Integer pageSize, Integer pageNumber) {
         Pageable pageable = PageRequest.of(pageNumber -1 , pageSize);
         Page<ProductVariant> productVariantPage = productVariantRepository.findAllByDeletedFalse(pageable);
-        return productVariantPage.map(productVariantMapper::toVariantResponse);
+        return productVariantPage.map(variant -> {
+            ProductVariantResponse response = productVariantMapper.toVariantResponse(variant);
+            response.setStockStatus(stockStatus(variant));
+            return response;
+        });
     }
 
     @Override
@@ -139,11 +159,18 @@ public class ProductVariantServiceImpl implements ProductVariantService {
         if (minPrice != null) {
             specification = specification.and(ProductVariantSpec.priceGreaterThanOrEqual(minPrice));
         }
+        if (minPrice != null && maxPrice != null && minPrice.compareTo(maxPrice) > 0) {
+            throw new AppException(ErrorCode.INVALID_PRICE_RANGE);
+        }
         if (maxPrice != null) {
             specification = specification.and(ProductVariantSpec.priceLessThanOrEqual(maxPrice));
         }
         Pageable pageable = PageRequest.of(page - 1, size, Sort.by("createdAt").descending());
         return productVariantRepository.findAll(specification, pageable)
-                .map(productVariantMapper::toVariantResponse);
+                .map(variant -> {
+                    ProductVariantResponse response = productVariantMapper.toVariantResponse(variant);
+                    response.setStockStatus(stockStatus(variant));
+                    return response;
+                });
     }
 }

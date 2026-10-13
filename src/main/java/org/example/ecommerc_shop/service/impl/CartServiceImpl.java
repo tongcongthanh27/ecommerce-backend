@@ -74,14 +74,14 @@ public class CartServiceImpl implements CartService {
     @Transactional
     public CartItemResponse updateQuantity(String id, String username, UpdateCartItemRequest updateCartItemRequest) {
         Cart cart = cartRepository.findByUserUsername(username).orElseThrow(
-                () -> new AppException(ErrorCode.CARTNOTFOUND)
+                () -> new AppException(ErrorCode.CART_NOT_FOUND)
         );
         CartItem cartItem = cartItemRepository.findByIdAndCartIdAndDeletedFalse(id, cart.getId()).orElseThrow(
                 () -> new AppException(ErrorCode.CART_ITEM_NOT_FOUND)
         );
         int quantity = updateCartItemRequest.getQuantity();
         if (quantity > cartItem.getProductVariant().getQuantityInStock()){
-            throw new AppException(ErrorCode.INSUFFICIENT_STOCK);
+            throw new AppException(ErrorCode.INSUFFICIENT_CART_STOCK);
         }
         cartItem.setQuantity(quantity);
         return cartItemMapper.toCartItemResponse(cartItem);
@@ -92,7 +92,7 @@ public class CartServiceImpl implements CartService {
     public void deleteCartItem(String id, String username) {
         Cart cart = cartRepository.findByUserUsername(username)
                 .orElseThrow(() ->
-                        new AppException(ErrorCode.CARTNOTFOUND));
+                        new AppException(ErrorCode.CART_NOT_FOUND));
         CartItem cartItem = cartItemRepository.findByIdAndCartIdAndDeletedFalse(id, cart.getId())
                 .orElseThrow(() -> new AppException(ErrorCode.CART_ITEM_NOT_FOUND));
         cartItem.setDeleted(true);
@@ -102,7 +102,7 @@ public class CartServiceImpl implements CartService {
     @Transactional
     public CartItemResponse addToCart(AddToCartRequest request, String username) {
         User user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new AppException(ErrorCode.USERNOTFOUND));
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
         Cart cart = cartRepository.findByUserUsername(username)
                 .orElseGet(() -> {
                     Cart newCart = new Cart();
@@ -111,12 +111,12 @@ public class CartServiceImpl implements CartService {
                 });
         ProductVariant productVariant = productVariantRepository.findProductVariantByIdAndDeletedFalse(request.getProductVariantId());
         if (productVariant == null) {
-            throw new AppException(ErrorCode.VARIANTNOTFOUND);
+            throw new AppException(ErrorCode.PRODUCT_VARIANT_NOT_FOUND);
         }
         CartItem cartItem = cartItemRepository.findByCartIdAndProductVariantIdAndDeletedFalse(cart.getId(), productVariant.getId());
         if (cartItem == null) {
             if (request.getQuantity() > productVariant.getQuantityInStock()) {
-                throw new AppException(ErrorCode.INSUFFICIENT_STOCK);
+                throw new AppException(ErrorCode.INSUFFICIENT_CART_STOCK);
             }
             cartItem = new CartItem();
             cartItem.setCart(cart);
@@ -126,7 +126,7 @@ public class CartServiceImpl implements CartService {
         } else {
             int newQuantity = cartItem.getQuantity() + request.getQuantity();
             if (newQuantity > productVariant.getQuantityInStock()) {
-                throw new AppException(ErrorCode.INSUFFICIENT_STOCK);
+                throw new AppException(ErrorCode.INSUFFICIENT_CART_STOCK);
             }
             cartItem.setQuantity(newQuantity);
             cartItemRepository.save(cartItem);

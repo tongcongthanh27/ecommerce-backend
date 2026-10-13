@@ -1,7 +1,6 @@
 package org.example.ecommerc_shop.dto.request;
 
 import jakarta.validation.constraints.DecimalMin;
-import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -18,10 +17,8 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 public class CouponUpdateRequest implements Serializable {
-    @NotNull
     private DiscountType discountType;
 
-    @NotNull
     @DecimalMin(value = "0.0")
     private BigDecimal discountValue;
 
@@ -34,9 +31,7 @@ public class CouponUpdateRequest implements Serializable {
     @DecimalMin(value = "1")
     private Integer usageLimit;
 
-    @NotNull
     private LocalDateTime startDate;
 
-    @NotNull
     private LocalDateTime endDate;
 }

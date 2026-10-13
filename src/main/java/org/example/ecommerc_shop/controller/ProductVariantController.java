@@ -6,7 +6,6 @@ import org.example.ecommerc_shop.dto.ApiResponse;
 import org.example.ecommerc_shop.dto.request.ProductVariantCreateRequest;
 import org.example.ecommerc_shop.dto.request.ProductVariantUpdateRequest;
 import org.example.ecommerc_shop.dto.response.ProductVariantResponse;
-import org.example.ecommerc_shop.entity.ProductVariant;
 import org.example.ecommerc_shop.service.ProductVariantService;
 import org.springframework.data.domain.Page;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -14,6 +13,8 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
+import org.example.ecommerc_shop.exception.AppException;
+import org.example.ecommerc_shop.exception.ErrorCode;
 
 @RestController
 @RequiredArgsConstructor

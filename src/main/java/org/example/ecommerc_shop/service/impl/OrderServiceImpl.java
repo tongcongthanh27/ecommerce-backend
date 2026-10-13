@@ -40,91 +40,18 @@ public class OrderServiceImpl implements OrderService {
     private final OrderItemMapper orderItemMapper;
     private final TrackingLogRepository trackingLogRepository;
     private final NotificationRepository notificationRepository;
+    private final OrderTransactionService orderTransactionService;
 
     @Override
-    @Transactional
     public OrderResponse createOrder(OrderCreateRequest request, String username) {
-        User user = userRepository.findByUsernameAndDeletedFalse(username)
-                .orElseThrow(() -> new AppException(ErrorCode.USERNOTFOUND));
-        Cart cart = cartRepository.findByUserUsername(username)
-                .orElseThrow(() -> new AppException(ErrorCode.CARTNOTFOUND));
-        List<CartItem> cartItems =
-                cartItemRepository.findCartItemsWithProductVariant(cart.getId());
-        BigDecimal subtotal = BigDecimal.ZERO;
-        for (CartItem cartItem : cartItems) {
-            ProductVariant productVariant = cartItem.getProductVariant();
-            if (cartItem.getQuantity() > productVariant.getQuantityInStock()) {
-                throw new AppException(ErrorCode.INSUFFICIENTSTOCK);
-            }
-            BigDecimal itemSubtotal = productVariant.getPrice().multiply(BigDecimal.valueOf(cartItem.getQuantity()));
-            subtotal = subtotal.add(itemSubtotal);
-        }
-        Coupon coupon = null;
-        BigDecimal discount = BigDecimal.ZERO;
-        if (request.getCouponCode() != null && !request.getCouponCode().isBlank()) {
-            coupon = couponRepository.findValidCoupon(request.getCouponCode(), LocalDateTime.now())
-                    .orElseThrow(() -> new AppException(ErrorCode.COUPONINVALID));
-            if (subtotal.compareTo(coupon.getMinOrderValue()) >= 0) {
-                if (DiscountType.PERCENTAGE.equals(coupon.getDiscountType())) {
-                    discount = subtotal.multiply(coupon.getDiscountValue()).divide(BigDecimal.valueOf(100));
-                    if (coupon.getMaxDiscountAmount() != null) {
-                        discount = discount.min(coupon.getMaxDiscountAmount());
-                    }
-                } else if (DiscountType.FIXED_AMOUNT.equals(coupon.getDiscountType())) {
-                    discount = coupon.getDiscountValue();
-                    if (coupon.getMaxDiscountAmount() != null) {
-                        discount = discount.min(coupon.getMaxDiscountAmount());
-                    }
-                    discount = discount.min(subtotal);
-                }
-            }
-        }
-        BigDecimal shippingFee = BigDecimal.valueOf(500000);
-        BigDecimal grandTotal = subtotal.add(shippingFee).subtract(discount);
-        Order order = orderMapper.toOrder(request);
-        order.setTrackingNumber(generateTrackingNumber());
-        order.setUser(user);
-        order.setStatus(OrderStatus.PENDING);
-        order.setPaymentStatus(PaymentStatus.UNPAID);
-        order.setCoupon(coupon);
-        order.setSubtotal(subtotal);
-        order.setDiscount(discount);
-        order.setShippingFee(shippingFee);
-        order.setGrandTotal(grandTotal);
-        Order savedOrder = orderRepository.save(order);
-        if (coupon != null) {
-            coupon.setUsedCount(coupon.getUsedCount() + 1);
-        }
-        List<OrderItem> orderItems = new ArrayList<>();
-        for (CartItem cartItem : cartItems) {
-            OrderItem orderItem = orderItemMapper.toOrderItem(cartItem);
-            orderItem.setOrder(savedOrder);
-            orderItems.add(orderItem);
-            ProductVariant productVariant = cartItem.getProductVariant();
-            productVariant.setQuantityInStock(productVariant.getQuantityInStock() - cartItem.getQuantity());
-            cartItem.setDeleted(true);
-        }
-        orderItemRepository.saveAll(orderItems);
-        TrackingLog trackingLog = new TrackingLog();
-        trackingLog.setOrder(savedOrder);
-        trackingLog.setStatus(OrderStatus.PENDING);
-        trackingLog.setNote("Order created");
-        trackingLogRepository.save(trackingLog);
-        OrderResponse response = orderMapper.toOrderResponse(savedOrder);
-        List<OrderItemResponse> itemResponses = new ArrayList<>();
-        for (OrderItem orderItem : orderItems) {
-            OrderItemResponse itemResponse = orderItemMapper.toOrderItemResponse(orderItem);
-            itemResponses.add(itemResponse);
-        }
-        response.setItems(itemResponses);
-        return response;
+        return orderTransactionService.createOrderTransaction(request, username);
     }
 
     @Override
     @Transactional
     public Page<OrderSummaryResponse> getMyOrders(Integer pageSize, Integer pageNumber, String username) {
         User user = userRepository.findByUsernameAndDeletedFalse(username).orElseThrow(
-                () -> new AppException(ErrorCode.USERNOTFOUND)
+                () -> new AppException(ErrorCode.USER_NOT_FOUND)
         );
         Pageable pageable = PageRequest.of(pageNumber -1 , pageSize, Sort.by("createdAt").descending());
         Page<Order> orderPage = orderRepository.findAllByUserIdAndDeletedFalse(user.getId(), pageable);
@@ -135,7 +62,7 @@ public class OrderServiceImpl implements OrderService {
     @Transactional(readOnly = true)
     public Page<OrderSummaryResponse> getMyOrdersByStatus(Integer pageSize, Integer pageNumber, String username, OrderStatus status) {
         User user = userRepository.findByUsernameAndDeletedFalse(username).orElseThrow(
-                () -> new AppException(ErrorCode.USERNOTFOUND)
+                () -> new AppException(ErrorCode.USER_NOT_FOUND)
         );
         Pageable pageable = PageRequest.of(pageNumber - 1, pageSize, Sort.by("createdAt").descending());
         Specification<Order> spec = Specification.where(OrderSpec.isNotDeleted())
@@ -252,7 +179,7 @@ public class OrderServiceImpl implements OrderService {
     @Transactional
     public Page<ShipperOrderResponse> getAllOrderForShipper(Integer pageSize, Integer pageNumber, String shipperName) {
         User shipper = userRepository.findByUsernameAndDeletedFalse(shipperName).orElseThrow(
-                () -> new AppException(ErrorCode.USERNOTFOUND)
+                () -> new AppException(ErrorCode.USER_NOT_FOUND)
         );
         Pageable pageable = PageRequest.of(pageNumber -1 , pageSize, Sort.by("createdAt").descending());
         Page<Order> orderPage = orderRepository.findAllByShipperIdAndDeletedFalse(shipper.getId(), pageable);
@@ -323,14 +250,5 @@ public class OrderServiceImpl implements OrderService {
         notification.setStatus(NotificationStatus.PENDING);
 
         notificationRepository.save(notification);
-    }
-    private String generateTrackingNumber() {
-        String randomCode = UUID.randomUUID()
-                .toString()
-                .replace("-", "")
-                .substring(0, 8)
-                .toUpperCase();
-
-        return "ORD-" + LocalDate.now() + "-" + randomCode;
     }
 }

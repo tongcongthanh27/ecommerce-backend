@@ -29,10 +29,10 @@ public class AccountServiceImpl implements AccountService {
     @Transactional
     public User register(RegisterRequest request) {
         if (accountRepository.existsByUsername(request.getUsername())) {
-            throw new AppException(ErrorCode.USERNAME_ALREADY_EXIST);
+            throw new AppException(ErrorCode.USERNAME_ALREADY_EXISTS);
         }
         if (accountRepository.existsByEmail(request.getEmail())) {
-            throw new AppException(ErrorCode.EMAIL_ALREADY_EXIST);
+            throw new AppException(ErrorCode.EMAIL_ALREADY_EXISTS);
         }
 
         User user = new User();
@@ -53,7 +53,7 @@ public class AccountServiceImpl implements AccountService {
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
         User user = accountRepository.findByUsername(username);
         if (user == null){
-            throw new AppException(ErrorCode.USERNOTFOUND);
+            throw new AppException(ErrorCode.USER_NOT_FOUND);
         }
 
         return org.springframework.security.core.userdetails.User

@@ -9,6 +9,8 @@ import org.example.ecommerc_shop.common.UserRole;
 @NoArgsConstructor
 @AllArgsConstructor
 public class UserResponse {
+    private String id;
+
     private UserRole role;
 
     private String username;

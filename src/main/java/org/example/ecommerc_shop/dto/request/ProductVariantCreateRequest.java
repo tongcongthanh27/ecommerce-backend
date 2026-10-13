@@ -26,10 +26,11 @@ public class ProductVariantCreateRequest implements Serializable {
     @DecimalMin(value = "0.0")
     private BigDecimal price;
 
-    @NotNull
+    @NotBlank
     private String sku;
 
     @NotNull
+    @Min(0)
     private Integer weightGram;
 
     @NotNull

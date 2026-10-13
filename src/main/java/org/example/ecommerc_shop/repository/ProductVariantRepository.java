@@ -17,6 +17,10 @@ public interface ProductVariantRepository extends JpaRepository<ProductVariant, 
 
     boolean existsProductVariantByVariantNameAndIdNotAndDeletedFalse(String variantName, String id);
 
+    boolean existsByProduct_IdAndVariantNameAndDeletedFalse(String productId, String variantName);
+
+    boolean existsByProduct_IdAndVariantNameAndDeletedFalseAndIdNot(String productId, String variantName, String id);
+
     boolean existsProductVariantBySkuAndIdNotAndDeletedFalse(String sku, String id);
 
     ProductVariant findProductVariantByIdAndDeletedFalse(String id);

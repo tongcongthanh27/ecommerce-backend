@@ -1,746 +1,559 @@
-﻿# Rà soát API backend — luồng xử lý từng API
+# API backend — luồng xử lý theo từng endpoint
 
-Tài liệu này mô tả route trong controller và logic service đang chạy. Mỗi API được viết theo dạng đầu vào → truy vấn/kiểm tra → thay đổi dữ liệu → response; các nhánh lỗi thể hiện theo code hiện tại.
+Tài liệu này mô tả luồng theo controller, DTO, service, repository và mapper hiện tại. Với mỗi endpoint, luồng đi theo thứ tự request → validation/quyền → truy vấn/kiểm tra → cập nhật dữ liệu → response. `page` và `page_number` bắt đầu từ 1 ở API, service trừ 1 khi tạo `PageRequest`; không có kiểm tra page/size riêng. Các tham số page/size bắt buộc hay mặc định theo đúng khai báo ở controller.
 
-## Quyền truy cập chung
+## Quy ước chung
 
-- Spring Security dùng HTTP Basic; CSRF và CORS bị disable.
-- Swagger và `/api/v1/auth/**` được mở; `/api/v1/admin/**` yêu cầu ADMIN; `/api/v1/shipper/**` yêu cầu SHIPPER.
-- GET `/api/v1/categories/**` và `/api/v1/products/**` công khai; các request khác cần xác thực. Cart/order kiểm tra thêm USER hoặc ADMIN bằng `@PreAuthorize`.
-- Chưa thấy controller cho `/api/v1/auth/**` hoặc `/api/v1/shipper/**`. `/test` là endpoint hiện có để đọc thông tin principal.
+- Xác thực dùng HTTP Basic; CSRF/CORS bị disable. Swagger và `/api/v1/auth/**` permitAll; `/api/v1/admin/**` yêu cầu ADMIN; `/api/v1/shipper/**` yêu cầu SHIPPER; GET `/api/v1/categories/**` và `/api/v1/products/**` công khai. Cart và order khách yêu cầu USER qua `@PreAuthorize`.
+- Thành công thường trả `ApiResponse<T>`. Nếu controller không đặt code/message thì code mặc định là `0`, message null; auth đặt code `1000`. Delete thường trả message và không có result.
+- `AppException` trả HTTP status, code, message từ `ErrorCode`. Validation/bind/type mismatch/thiếu request parameter trả HTTP 400, code 400, message lỗi validation hoặc “Invalid request parameters”. Chưa có handler tổng quát cho mọi exception khác.
+- Ghi dữ liệu delete thường là soft delete (`deleted=true`). Ảnh dùng Cloudinary.
 
-## Tài khoản và xác thực
+## Auth
 
-### `GET /test` — thông tin tài khoản hiện tại
-
-```text
-HTTP Basic credentials
-        ↓
-AccountService.loadUserByUsername(username)
-        ↓
-AccountRepository.findByUsername(username)
-        ├─ Không tìm thấy → USERNOTFOUND
-        └─ Tìm thấy → dựng UserDetails(username, password, role)
-                         ↓
-Controller lấy username từ Principal
-        ↓
-AccountService.getUserByUsername(username)
-        ↓
-AuthMapper chuyển User thành LoginResponse
-        ↓
-ApiResponse(code=1000, message="Success", result=LoginResponse)
-```
-
-### Quản trị user — `/api/v1/admin/users` (ADMIN)
-
-#### `POST /api/v1/admin/users` — tạo user
+### `POST /api/v1/auth/register`
 
 ```text
-multipart/form-data + validation
-        ↓
-Kiểm tra username trùng user chưa xóa?
-        ├─ Có → USERNAME_ALREADY_EXIST
-        └─ Không → kiểm tra email trùng?
-                      ├─ Có → EMAIL_ALREADY_EXIST
-                      └─ Không → kiểm tra phone trùng?
-                                   ├─ Có → PHONE_ALREADY_EXIST
-                                   └─ Không
-                                        ↓
-                              UserMapper.toUser(request)
-                                        ↓
-                              BCrypt mã hóa password
-                                        ↓
-                              Có avatar? → upload Cloudinary → gán URL/public ID
-                                        ↓
-                              userRepository.save(user)
-                                        ↓
-                              map UserResponse → ApiResponse
+JSON RegisterRequest
+→ Bean Validation (username/email/password/fullName/province/city/addressDetail bắt buộc; phone có thể null)
+→ AccountService kiểm tra username và email trùng
+→ Tạo User, BCrypt password, gán role USER và deleted=false
+→ Lưu User
+→ map LoginResponse
+→ ApiResponse(code=1000, message đăng ký thành công, result=LoginResponse)
 ```
 
-#### `GET /api/v1/admin/users?page_size=&page_number=` — danh sách user
+Trùng username/email trả `USERNAME_ALREADY_EXISTS`/`EMAIL_ALREADY_EXISTS`.
+
+### `POST /api/v1/auth/login`
 
 ```text
-page_size + page_number (bắt buộc)
-        ↓
-PageRequest(page_number - 1, page_size)
-        ↓
-findAllByDeletedFalse(pageable)
-        ↓
-Map User → UserResponse
-        ↓
-ApiResponse<Page<UserResponse>>
+JSON LoginRequest(username, password)
+→ AuthenticationManager xác thực credentials
+→ Lấy User theo authentication name
+→ map LoginResponse
+→ gán token là Base64(username:password)
+→ ApiResponse(code=1000, message đăng nhập thành công, result=LoginResponse)
 ```
 
-#### `GET /api/v1/admin/users/{userId}` — chi tiết user
+`token` này không phải JWT; cấu hình xác thực thực tế vẫn là HTTP Basic. Sai credentials do Spring Security xử lý.
+
+### `GET /api/v1/auth/me`
 
 ```text
-userId
-        ↓
-findByIdAndDeletedFalse(userId)
-        ├─ Không có → USERNOTFOUND
-        └─ Có → map UserResponse → ApiResponse
+HTTP request → lấy Principal → tra User theo username → map LoginResponse
+→ ApiResponse(code=1000, message="Success", result=LoginResponse)
 ```
 
-#### `PUT /api/v1/admin/users/{userId}` — cập nhật user
+Security permitAll cho `/auth/**`, dù endpoint cần Principal. Gọi không xác thực có thể không có Principal và không được ánh xạ thành lỗi nghiệp vụ rõ ràng.
+
+## User quản trị (`ADMIN`)
+
+### `POST /api/v1/admin/users`
 
 ```text
-userId + multipart/form-data
-        ↓
-Tìm user chưa xóa → không có: USERNOTFOUND
-        ↓
-username khác null? → kiểm tra trùng user khác → gán username
-        ↓
-email khác null? → kiểm tra trùng user khác → gán email
-        ↓
-fullName/address khác null? → cập nhật trường tương ứng
-        ↓
-phone khác null? → kiểm tra trùng user khác → gán phone
-        ↓
-Avatar mới? → upload Cloudinary → cập nhật URL/public ID → xóa ảnh cũ nếu có
-        ↓
-Map UserResponse → ApiResponse
+multipart/form-data UserCreateRequest
+→ ADMIN + Bean Validation
+→ trim username/phone, lowercase email
+→ kiểm tra username/email/phone đã dùng bởi user chưa xóa
+→ map User, BCrypt password
+→ avatar có file? upload Cloudinary và gán URL/public ID
+→ save User
+→ ApiResponse<UserResponse> (có id, không trả password)
 ```
 
-#### `DELETE /api/v1/admin/users/{userId}` — xóa user
+Lỗi trùng lần lượt: `USERNAME_ALREADY_EXISTS`, `EMAIL_ALREADY_EXISTS`, `PHONE_NUMBER_ALREADY_EXISTS`.
+
+### `GET /api/v1/admin/users?page_size=...&page_number=...`
 
 ```text
-userId → tìm user chưa xóa → không có: USERNOTFOUND
-        ↓
-đặt deleted=true (soft delete)
-        ↓
-Controller trả message thành công
+ADMIN + hai query bắt buộc
+→ PageRequest(page_number - 1, page_size)
+→ findAllByDeletedFalse
+→ map từng User thành UserResponse
+→ ApiResponse<Page<UserResponse>>
 ```
 
-#### `PATCH /api/v1/admin/users/{userId}/role?role=` — đổi role
+### `GET /api/v1/admin/users/{userId}`
 
 ```text
-userId + role → tìm user chưa xóa → không có: USERNOTFOUND
-        ↓
-gán role → map UserResponse → ApiResponse
+ADMIN + userId → findByIdAndDeletedFalse
+→ không có: USER_NOT_FOUND
+→ có: map UserResponse → ApiResponse<UserResponse>
 ```
 
-#### `GET /api/v1/admin/users/filter?username=&email=&full_name=&role=&page=&size=` — lọc user
+### `PUT /api/v1/admin/users/{userId}`
 
 ```text
-Filter tùy chọn + page/size (mặc định 1/10)
-        ↓
-Specification ban đầu không điều kiện
-        ↓
-username/email/full_name có giá trị → thêm LIKE "%giá trị%"
-        ↓
-role có giá trị → thêm role = giá trị
-        ↓
-PageRequest(page - 1, size, createdAt DESC)
-        ↓
-findAll(specification, pageable) → map UserResponse
+ADMIN + multipart UserUpdateRequest
+→ Bean Validation → tìm user chưa xóa (không có: USER_NOT_FOUND)
+→ từng trường khác null được cập nhật; chuỗi rỗng ở trường profile bị từ chối
+→ username/email/phone kiểm tra trùng trên user khác; chuẩn hóa username/email/phone
+→ avatar mới? upload Cloudinary, cập nhật URL/public ID rồi xóa ảnh cũ
+→ map UserResponse → ApiResponse<UserResponse>
 ```
 
-Lưu ý: service không thêm `deleted=false` vào filter này, nên có thể trả user đã soft-delete.
-
-## Danh mục — `/api/v1/categories`
-
-#### `POST /api/v1/admin/categories` — tạo danh mục (ADMIN)
+### `DELETE /api/v1/admin/users/{userId}`
 
 ```text
-multipart/form-data + validation
-        ↓
-Kiểm tra tên trùng category chưa xóa? → Có: CATEGORY_NAME_EXISTED
-        ↓ Không
-parentId được gửi? → tìm parent chưa xóa → không có: CATEGORY_NOT_FOUND
-        ↓
-Map request → Category; gán parent
-        ↓
-Có ảnh? → upload Cloudinary → gán imageUrl/publicId
-        ↓
-save Category → map CategoryResponse → ApiResponse
+ADMIN + userId → tìm user chưa xóa (không có: USER_NOT_FOUND)
+→ set deleted=true
+→ ApiResponse<Void>(message="Delete User Successfully")
 ```
 
-#### `GET /api/v1/categories?page_size=10&page_number=1` — danh sách danh mục
+### `PATCH /api/v1/admin/users/{userId}/role?role=...`
 
 ```text
-page_size/page_number (mặc định 10/1)
-        ↓
-PageRequest(page_number - 1, page_size)
-        ↓
-findAllByDeletedFalse(pageable) → map CategoryResponse
-        ↓
-ApiResponse<Page<CategoryResponse>>
+ADMIN + userId + UserRole
+→ tìm user chưa xóa (không có: USER_NOT_FOUND)
+→ gán role
+→ map UserResponse → ApiResponse<UserResponse>
 ```
 
-#### `GET /api/v1/categories/{categoryId}` — chi tiết danh mục
+### `GET /api/v1/admin/users/filter?username=&email=&full_name=&role=&page=1&size=10`
 
 ```text
-categoryId → tìm category deleted=false
-        ├─ Không có → CATEGORY_NOT_FOUND
-        └─ Có → map CategoryResponse → ApiResponse
+ADMIN + các filter tùy chọn
+→ Specification bắt đầu bằng deleted=false
+→ username/email/full_name có giá trị: LIKE %value%; role có giá trị: bằng chính xác
+→ PageRequest(page - 1, size, createdAt DESC)
+→ findAll(specification) → map UserResponse
+→ ApiResponse<Page<UserResponse>>
 ```
 
-#### `GET /api/v1/categories/tree` — cây danh mục
+## Category
+
+### `POST /api/v1/admin/categories` (ADMIN)
 
 ```text
-Tải tất cả category deleted=false
-        ↓
-Map CategoryResponse theo category ID
-        ↓
-Duyệt lại danh sách
-        ├─ Không parent → thêm node vào roots
-        └─ Có parent trong map → thêm node vào parent.children
-        ↓
-Trả danh sách roots
+multipart CategoryCreateRequest → ADMIN + Bean Validation
+→ tên đã tồn tại trong category chưa xóa? có: CATEGORY_NAME_ALREADY_EXISTS
+→ parentId có? tìm parent chưa xóa; không có: CATEGORY_NOT_FOUND
+→ map Category, gán parent
+→ ảnh có? upload Cloudinary và gán URL/public ID
+→ save → map CategoryResponse → ApiResponse<CategoryResponse>
 ```
 
-#### `PUT /api/v1/admin/categories/{categoryId}` — cập nhật danh mục (ADMIN)
+### `GET /api/v1/categories?page_size=10&page_number=1` (public)
 
 ```text
-categoryId + multipart/form-data → tìm category chưa xóa
-        ├─ Không có → CATEGORY_NOT_FOUND
-        └─ Có
-             ↓
-name khác null/rỗng? → cập nhật name
-             ↓
-parentId null? → giữ parent hiện tại
-parentId rỗng? → đặt parent = null
-parentId có giá trị? → cấm parentId = categoryId → tìm parent chưa xóa → gán parent
-             ↓
-Ảnh mới? → upload → cập nhật URL/public ID → xóa ảnh cũ
-             ↓
-Map CategoryResponse
+query phân trang (mặc định 10/1)
+→ PageRequest(page_number - 1, page_size)
+→ findAllByDeletedFalse → map CategoryResponse
+→ ApiResponse<Page<CategoryResponse>>
 ```
 
-Lưu ý: xử lý parent bị lặp trong service; không kiểm tra tên trùng khi cập nhật hoặc chu trình parent nhiều cấp.
-
-#### `DELETE /api/v1/admin/categories/{categoryId}` — xóa danh mục (ADMIN)
+### `GET /api/v1/categories/{categoryId}` (public)
 
 ```text
-categoryId → tìm category chưa xóa → không có: CATEGORY_NOT_FOUND
-        ↓
-đặt deleted=true → controller trả message thành công
+categoryId → findByIdAndDeletedFalse
+→ không có: CATEGORY_NOT_FOUND
+→ có: map CategoryResponse (children không được dựng ở response thường)
+→ ApiResponse<CategoryResponse>
 ```
 
-Không thấy cascade xóa category con hoặc product.
-
-#### `GET /api/v1/categories/filter?name=&parent_id=&page=1&size=10` — lọc danh mục
+### `GET /api/v1/categories/tree` (public)
 
 ```text
-Filter tùy chọn + page/size (mặc định 1/10)
-        ↓
-Specification deleted=false
-        ↓
-name có? → AND name LIKE "%name%"
-parent_id có? → AND parent.id = parent_id
-        ↓
-PageRequest(page - 1, size, createdAt DESC)
-        ↓
-findAll → map CategoryResponse → ApiResponse<Page<CategoryResponse>>
+findAllByDeletedFalse
+→ map từng category thành CategoryResponse theo ID
+→ category không parent thành root; category có parent nằm trong tập kết quả được gắn vào children của parent
+→ trả List<CategoryResponse> trong ApiResponse
 ```
 
-## Sản phẩm — `/api/v1/products`
-
-#### `POST /api/v1/admin/products` — tạo sản phẩm (ADMIN)
+### `PUT /api/v1/admin/categories/{categoryId}` (ADMIN)
 
 ```text
-multipart/form-data + validation
-        ↓
-Tìm category theo ID và deleted=false → không có: CATEGORY_NOT_FOUND
-        ↓
-Tên trùng product chưa xóa? → Có: PRODUCT_EXISTED
-        ↓ Không
-Map request → Product; gán category
-        ↓
-Có ảnh? → upload Cloudinary → gán thumbnail URL/public ID
-        ↓
-save Product → map ProductResponse
+multipart CategoryUpdateRequest → tìm category chưa xóa (không có: CATEGORY_NOT_FOUND)
+→ name khác null/rỗng: trim, kiểm tra trùng category khác, cập nhật
+→ description khác null: cập nhật (chuỗi rỗng xóa mô tả)
+→ parentId null: giữ; rỗng: bỏ parent; có giá trị: tìm parent chưa xóa và ngăn tự tham chiếu/chu trình
+→ ảnh mới: upload xong mới xóa ảnh cũ
+→ map CategoryResponse → ApiResponse<CategoryResponse>
 ```
 
-#### `DELETE /api/v1/admin/products/{productId}` — xóa sản phẩm (ADMIN)
+### `DELETE /api/v1/admin/categories/{categoryId}` (ADMIN)
 
 ```text
-productId → tìm product chưa xóa → không có: PRODUCT_NOT_FOUND
-        ↓
-đặt deleted=true (soft delete) → controller trả message thành công
+categoryId → tìm category chưa xóa (không có: CATEGORY_NOT_FOUND)
+→ set deleted=true, không cascade xuống product/category con
+→ ApiResponse<Void>(message="Delete Category Successfully")
 ```
 
-#### `PUT /api/v1/admin/products/{productId}` — cập nhật sản phẩm (ADMIN)
+### `GET /api/v1/categories/filter?name=&parent_id=&page=1&size=10` (public)
 
 ```text
-productId + multipart/form-data → tìm product chưa xóa
-        ├─ Không có → PRODUCT_NOT_FOUND
-        └─ Có
-             ↓
-categoryId có giá trị? → tìm category chưa xóa → không có: CATEGORY_NOT_FOUND → gán
-             ↓
-name có giá trị? → kiểm tra trùng product khác → có: PRODUCT_EXISTED → gán
-             ↓
-description khác null? → cập nhật description
-             ↓
-Ảnh mới? → xóa ảnh Cloudinary cũ nếu có → upload ảnh mới → cập nhật URL/public ID
-             ↓
-Map ProductResponse
+filter tùy chọn → Specification deleted=false
+→ name có: LIKE %name%; parent_id có: parent.id bằng parent_id
+→ PageRequest(page - 1, size, createdAt DESC)
+→ map CategoryResponse → ApiResponse<Page<CategoryResponse>>
 ```
 
-#### `GET /api/v1/products?page_size=10&page_number=1` — danh sách sản phẩm
+## Product
+
+### `POST /api/v1/admin/products` (ADMIN)
 
 ```text
-page_size/page_number (mặc định 10/1)
-        ↓
-PageRequest(page_number - 1, page_size)
-        ↓
-findAllByDeletedFalse → map ProductResponse (category ID/name)
-        ↓
-ApiResponse<Page<ProductResponse>>
+multipart ProductCreateRequest → ADMIN + Bean Validation
+→ tìm category theo ID và deleted=false (không có: CATEGORY_NOT_FOUND)
+→ trim tên; tên trùng product chưa xóa: PRODUCT_NAME_ALREADY_EXISTS
+→ map Product, gán category
+→ ảnh có? upload Cloudinary và gán thumbnail URL/public ID
+→ save → map ProductResponse → ApiResponse<ProductResponse>
 ```
 
-#### `GET /api/v1/products/{productId}` — chi tiết sản phẩm
+### `PUT /api/v1/admin/products/{productId}` (ADMIN)
 
 ```text
-productId → tìm product deleted=false → không có: PRODUCT_NOT_FOUND
-        ↓
-Tìm variants deleted=false thuộc product
-        ↓
-Map Product → ProductDetailResponse
-        ↓
-Map variants → ProductVariantResponse → gắn vào response
+multipart ProductUpdateRequest dạng partial
+→ tìm product chưa xóa (không có: PRODUCT_NOT_FOUND)
+→ categoryId khác null/rỗng: tìm category chưa xóa (không có: CATEGORY_NOT_FOUND), gán
+→ name khác null/rỗng: trim, kiểm tra trùng product khác, cập nhật
+→ description khác null: cập nhật
+→ ảnh mới: upload trước, sau đó xóa ảnh cũ và cập nhật URL/public ID
+→ map ProductResponse → ApiResponse<ProductResponse>
 ```
 
-#### `GET /api/v1/products/filter?name=&category_id=&page=1&size=10` — lọc sản phẩm
+### `DELETE /api/v1/admin/products/{productId}` (ADMIN)
 
 ```text
-Filter tùy chọn + page/size (mặc định 1/10)
-        ↓
-Specification product deleted=false
-        ↓
-name có? → AND name LIKE "%name%"
-category_id có? → lấy category hiện tại và hậu duệ bằng đệ quy
-        ↓
-AND product.category.id thuộc danh sách category IDs
-        ↓
-PageRequest(page - 1, size, createdAt DESC) → map ProductResponse
+productId → tìm product chưa xóa (không có: PRODUCT_NOT_FOUND)
+→ set deleted=true
+→ ApiResponse<Void>(message="Delete Product Successfully")
 ```
 
-#### `GET /api/v1/products/category/{categoryId}?page_size=10&page_number=1` — sản phẩm theo danh mục
+### `GET /api/v1/products?page_size=10&page_number=1` (public)
 
 ```text
-categoryId + page_size/page_number (mặc định 10/1)
-        ↓
-Tìm category deleted=false → không có: CATEGORY_NOT_FOUND
-        ↓
-Lấy category ID hiện tại + các hậu duệ
-        ↓
-PageRequest(page_number - 1, page_size)
-        ↓
-Tìm product deleted=false thuộc các category IDs → map ProductResponse
+query phân trang (mặc định 10/1) → PageRequest(page_number - 1, page_size)
+→ findAllByDeletedFalse → map ProductResponse (categoryId/categoryName)
+→ ApiResponse<Page<ProductResponse>>
 ```
 
-## Biến thể sản phẩm — `/api/v1/admin` (ADMIN)
-
-#### `POST /api/v1/admin/products/{productId}/variants` — tạo variant
+### `GET /api/v1/products/{productId}` (public)
 
 ```text
-productId + multipart/form-data + validation
-        ↓
-Tìm product cha chưa xóa → không có: PRODUCT_NOT_FOUND
-        ↓
-variantName trùng variant chưa xóa? → Có: PRODUCT_VARIANT_EXISTED
-SKU trùng variant chưa xóa? → Có: PRODUCT_VARIANT_EXISTED
-        ↓
-Map request → ProductVariant; upload ảnh nếu có; gán product
-        ↓
-save variant → map response → quantity > 0: IN_STOCK, ngược lại OUT_OF_STOCK
+productId → tìm product deleted=false (không có: PRODUCT_NOT_FOUND)
+→ tải variant thuộc product và deleted=false
+→ map ProductDetailResponse + danh sách ProductVariantResponse
+→ ApiResponse<ProductDetailResponse>
 ```
 
-#### `PUT /api/v1/admin/products/variants/{variantId}` — cập nhật variant
+### `GET /api/v1/products/filter?name=&category_id=&page=1&size=10` (public)
 
 ```text
-variantId + multipart/form-data → tìm variant chưa xóa
-        ├─ Không có → VARIANTNOTFOUND
-        └─ Có
-             ↓
-variantName gửi lên và trùng variant khác? → Có: PRODUCT_VARIANT_EXISTED
-sku gửi lên và trùng variant khác? → Có: SKU_ALREADY_EXISTS
-             ↓
-ProductVariantMapper.updateVariant(request, variant)
-             ↓
-Ảnh mới? → upload Cloudinary → cập nhật URL/public ID
-             ↓
-save → map response → tính stockStatus theo quantity
+filter tùy chọn → Specification product deleted=false
+→ name có: LIKE %name%
+→ category_id có: lấy category đó và các hậu duệ, lọc product theo các category ID
+→ PageRequest(page - 1, size, createdAt DESC) → map ProductResponse
+→ ApiResponse<Page<ProductResponse>>
 ```
 
-#### `DELETE /api/v1/admin/products/variants/{variantId}` — xóa variant
+Category không tồn tại/bị xóa khi lấy ID hậu duệ trả `CATEGORY_NOT_FOUND`.
+
+### `GET /api/v1/products/category/{categoryId}?page_size=10&page_number=1` (public)
 
 ```text
-variantId → tìm variant deleted=false → không có: VARIANTNOTFOUND
-        ↓
-đặt deleted=true → controller trả message thành công
+categoryId + query phân trang mặc định 10/1
+→ xác nhận category chưa xóa (không có: CATEGORY_NOT_FOUND)
+→ lấy category hiện tại và hậu duệ
+→ PageRequest → query product deleted=false trong nhóm category
+→ map ProductResponse → ApiResponse<Page<ProductResponse>>
 ```
 
-#### `GET /api/v1/admin/product-variants?page_size=&page_number=` — danh sách variant
+## Product variant (ADMIN)
+
+### `POST /api/v1/admin/products/{productId}/variants`
 
 ```text
-page_size + page_number (bắt buộc)
-        ↓
-PageRequest(page_number - 1, page_size)
-        ↓
-findAllByDeletedFalse → map ProductVariantResponse
+multipart ProductVariantCreateRequest → ADMIN + Bean Validation
+→ tìm product chưa xóa (không có: PRODUCT_NOT_FOUND)
+→ tên variant trùng trong cùng product: PRODUCT_VARIANT_NAME_ALREADY_EXISTS
+→ SKU trim/uppercase; SKU trùng toàn hệ thống hiện cũng bị báo PRODUCT_VARIANT_NAME_ALREADY_EXISTS
+→ map variant, upload ảnh nếu có, gán product, save
+→ map ProductVariantResponse; stockStatus = IN_STOCK nếu quantity > 0, ngược lại OUT_OF_STOCK
+→ ApiResponse<ProductVariantResponse>
 ```
 
-#### `GET /api/v1/admin/product-variants/filter?variant_name=&sku=&product_id=&min_price=&max_price=&page=1&size=10` — lọc variant
+### `PUT /api/v1/admin/products/variants/{variantId}`
 
 ```text
-Filter tùy chọn + page/size (mặc định 1/10)
-        ↓
-Specification deleted=false
-        ↓
-variant_name/SKU? → AND LIKE "%giá trị%"
-product_id? → AND product.id = product_id
-min_price? → AND price >= min_price
-max_price? → AND price <= max_price
-        ↓
-PageRequest(page - 1, size, createdAt DESC) → map ProductVariantResponse
+multipart ProductVariantUpdateRequest dạng partial
+→ tìm variant chưa xóa (không có: PRODUCT_VARIANT_NOT_FOUND)
+→ tên không blank và không trùng variant khác cùng product
+→ SKU không blank, trim/uppercase và không trùng variant khác
+→ map các trường khác null; ảnh mới upload xong mới xóa ảnh cũ
+→ save, map response và tính stockStatus
+→ ApiResponse<ProductVariantResponse>
 ```
 
-## Giỏ hàng — `/api/v1/carts/items` (USER)
+Tên/SKU blank trả `INVALID_PRODUCT_VARIANT`; tên trùng trả `PRODUCT_VARIANT_NAME_ALREADY_EXISTS`; SKU trùng trả `PRODUCT_VARIANT_SKU_ALREADY_EXISTS`.
 
-#### `POST /api/v1/carts/items` — thêm vào giỏ
+### `DELETE /api/v1/admin/products/variants/{variantId}`
 
 ```text
-username + productVariantId + quantity (validation quantity >= 1)
-        ↓
-Tìm User theo username → không có: USERNOTFOUND
-        ↓
-Tìm Cart của user
-        ├─ Chưa có → tạo Cart mới, gắn User, save Cart
-        └─ Đã có → dùng Cart hiện tại
-             ↓
-Tìm ProductVariant deleted=false → không có: VARIANTNOTFOUND
-        ↓
-Tìm CartItem deleted=false theo cartId + variantId
-        ├─ Chưa có → kiểm tra quantity <= quantityInStock
-        │              ├─ Không đạt → INSUFFICIENT_STOCK
-        │              └─ Đạt → tạo CartItem, gán cart/variant/quantity, save
-        └─ Đã có → newQuantity = quantity hiện tại + quantity yêu cầu
-                       ↓
-                 kiểm tra newQuantity <= quantityInStock
-                       ├─ Không đạt → INSUFFICIENT_STOCK
-                       └─ Đạt → cập nhật quantity, save
-        ↓
-Map CartItemResponse
+variantId → tìm variant chưa xóa (không có: PRODUCT_VARIANT_NOT_FOUND)
+→ set deleted=true
+→ ApiResponse<Void>(message="Delete Variant success")
 ```
 
-#### `GET /api/v1/carts/items` — xem giỏ
+### `GET /api/v1/admin/product-variants?page_size=...&page_number=...`
 
 ```text
-username từ Principal → tìm Cart
-        ├─ Không có → CartResponse(items=[], totalItems=0, subtotal=0)
-        └─ Có → tải CartItems cùng ProductVariant
-                    ↓
-              Với từng item: totalItems += quantity
-                    ↓
-              subtotal += variant.price × quantity
-                    ↓
-              tồn variant > 0? → IN_STOCK : OUT_OF_STOCK
-                    ↓
-              map từng CartItemResponse và stockStatus
-                    ↓
-              CartMapper tạo CartResponse
+ADMIN + page_size/page_number bắt buộc
+→ PageRequest(page_number - 1, page_size)
+→ findAllByDeletedFalse → map response và tính stockStatus
+→ ApiResponse<Page<ProductVariantResponse>>
 ```
 
-#### `DELETE /api/v1/carts/items/{cartItemId}` — xóa item khỏi giỏ
+### `GET /api/v1/admin/product-variants/filter?variant_name=&sku=&product_id=&min_price=&max_price=&page=1&size=10`
 
 ```text
-cartItemId + username
-        ↓
-Tìm Cart của user → không có: CARTNOTFOUND
-        ↓
-Tìm CartItem theo id + cartId + deleted=false → không có: CART_ITEM_NOT_FOUND
-        ↓
-đặt CartItem.deleted=true (soft delete)
-        ↓
-Controller trả message "Xoa san pham thanh cong"
+filter tùy chọn → Specification deleted=false
+→ variant_name/SKU LIKE; product_id bằng; min_price ≤ price; max_price ≥ price
+→ min_price > max_price: INVALID_PRICE_RANGE
+→ PageRequest(page - 1, size, createdAt DESC) → map response + stockStatus
+→ ApiResponse<Page<ProductVariantResponse>>
 ```
 
-#### `PUT /api/v1/carts/items/{cartItemId}` — cập nhật số lượng
+## Cart (USER)
+
+### `POST /api/v1/carts/items`
 
 ```text
-cartItemId + username + request.quantity
-        ↓
-Tìm Cart của user → không có: CARTNOTFOUND
-        ↓
-Tìm CartItem theo id + cartId + deleted=false → không có: CART_ITEM_NOT_FOUND
-        ↓
-Lấy ProductVariant từ CartItem
-        ↓
-quantity > quantityInStock?
-        ├─ Có → INSUFFICIENT_STOCK
-        └─ Không → CartItem.quantity = quantity
-                       ↓
-                 map CartItemResponse
+JSON AddToCartRequest → validate productVariantId không blank, quantity >= 1
+→ tìm user theo principal username (không có: USER_NOT_FOUND)
+→ tìm cart; nếu chưa có thì tạo và gán user
+→ tìm variant deleted=false (không có: PRODUCT_VARIANT_NOT_FOUND)
+→ tìm cart item còn hoạt động
+   → chưa có: kiểm tra quantity ≤ tồn kho, tạo item
+   → đã có: cộng quantity hiện tại + yêu cầu, kiểm tra ≤ tồn kho, cập nhật
+→ hết tồn: INSUFFICIENT_CART_STOCK
+→ map CartItemResponse → ApiResponse<CartItemResponse>
 ```
 
-Lưu ý: DTO không có `@NotNull`/`@Min(1)`; service cũng không chặn rõ quantity null, 0 hoặc âm.
-
-## Đơn hàng người dùng — `/api/v1/orders` (USER)
-
-#### `POST /api/v1/orders` — tạo đơn hàng
+### `GET /api/v1/carts/items`
 
 ```text
-username + OrderCreateRequest
-        ↓
-Tìm User deleted=false → không có: USERNOTFOUND
-        ↓
-Tìm Cart theo username → không có: CARTNOTFOUND
-        ↓
-Tải CartItems cùng ProductVariants
-        ↓
-Duyệt từng CartItem
-        ├─ quantity > tồn kho → INSUFFICIENTSTOCK
-        └─ subtotal += variant.price × quantity
-             ↓
-Có couponCode?
-        ├─ Không → coupon=null, discount=0
-        └─ Có → tìm coupon: code đúng, deleted=false, ACTIVE,
-                trong thời hạn, usage chưa đạt limit
-                  ├─ Không hợp lệ → COUPONINVALID
-                  └─ Hợp lệ → so subtotal với minOrderValue
-                                  ├─ Chưa đạt → discount=0, coupon vẫn gắn
-                                  └─ Đạt → tính discount theo loại
-                                             ├─ PERCENTAGE → subtotal × % / 100
-                                             └─ FIXED_AMOUNT → discountValue, không quá subtotal
-                                  → áp maxDiscountAmount nếu có
-             ↓
-shippingFee = 500000
-        ↓
-grandTotal = subtotal + shippingFee - discount
-        ↓
-Map request → Order; gán recipient, user, tracking number,
-status=PENDING, paymentStatus=UNPAID, coupon và các số tiền
-        ↓
-orderRepository.save(order)
-        ↓
-Coupon có? → tăng usedCount
-        ↓
-Từng CartItem → tạo OrderItem (unitPrice = giá hiện tại)
-             → gán order → trừ tồn kho → CartItem.deleted=true
-        ↓
-saveAll(OrderItems)
-        ↓
-Tạo TrackingLog(PENDING, "Order created") → save
-        ↓
-Map Order + OrderItems → OrderResponse
+username từ Principal → tìm cart
+→ không có: CartResponse(totalItems=0, subtotal=0, items=[])
+→ có: tải items cùng variant; cộng quantity và price × quantity
+→ gắn IN_STOCK/OUT_OF_STOCK từng item
+→ CartMapper → ApiResponse<CartResponse>
 ```
 
-Lưu ý: payment method được map từ request nhưng service không tạo Payment/thực hiện thanh toán; không có kiểm tra cart rỗng.
-
-#### `GET /api/v1/orders?page_size=10&page_number=1` — danh sách đơn của tôi
+### `PUT /api/v1/carts/items/{cartItemId}`
 
 ```text
-username + page_size/page_number (mặc định 10/1)
-        ↓
-Tìm User deleted=false → không có: USERNOTFOUND
-        ↓
-PageRequest(page_number - 1, page_size, createdAt DESC)
-        ↓
-Tìm Order theo userId + deleted=false
-        ↓
-Map Order → OrderSummaryResponse
-        ↓
-ApiResponse<Page<OrderSummaryResponse>>
+USER + cartItemId + JSON UpdateCartItemRequest.quantity
+→ tìm cart theo username (không có: CART_NOT_FOUND)
+→ tìm item thuộc cart và deleted=false (không có: CART_ITEM_NOT_FOUND)
+→ nếu quantity > tồn kho: INSUFFICIENT_CART_STOCK
+→ gán quantity, map CartItemResponse → ApiResponse<CartItemResponse>
 ```
 
-#### `GET /api/v1/orders/filter?status=&page_size=10&page_number=1` — lọc đơn của tôi
+DTO/service hiện không chặn rõ quantity null, 0 hoặc âm; chỉ kiểm tra vượt tồn.
+
+### `DELETE /api/v1/carts/items/{cartItemId}`
 
 ```text
-username + status (bắt buộc) + page_size/page_number
-        ↓
-Tìm User deleted=false → không có: USERNOTFOUND
-        ↓
-PageRequest(page_number - 1, page_size, createdAt DESC)
-        ↓
-Specification: deleted=false AND user.id=currentUser.id AND status=request.status
-        ↓
-findAll(specification, pageable) → map OrderSummaryResponse
+USER + cartItemId → tìm cart (không có: CART_NOT_FOUND)
+→ tìm item thuộc cart và deleted=false (không có: CART_ITEM_NOT_FOUND)
+→ soft delete item
+→ ApiResponse<Void>(message="Xoa san pham thanh cong")
 ```
 
-#### `GET /api/v1/orders/{orderId}` — chi tiết đơn của tôi
+## Order khách hàng (USER)
+
+### `POST /api/v1/orders`
 
 ```text
-orderId + username
-        ↓
-Tìm Order theo id + user.username + deleted=false
-        ├─ Không có/không thuộc user → ORDER_NOT_FOUND
-        └─ Có → map OrderResponse
-                    ↓
-              Tìm OrderItems theo orderId
-                    ↓
-              Map dòng hàng (SKU, variant, unitPrice, quantity, subtotal)
-                    ↓
-              Gắn items → trả OrderResponse
+JSON OrderCreateRequest → validate paymentMethod, recipient và địa chỉ
+→ tìm User và Cart (USER_NOT_FOUND/CART_NOT_FOUND)
+→ tải cart items, kiểm tra từng quantity ≤ tồn; cộng subtotal
+→ couponCode có: tìm coupon ACTIVE, trong hạn, chưa hết usage
+   → không hợp lệ: INVALID_COUPON
+   → subtotal đạt minOrderValue: tính discount phần trăm/cố định, áp maxDiscountAmount và không vượt subtotal
+   → chưa đạt minOrderValue: coupon vẫn gắn vào order, discount = 0
+→ shippingFee = 500000; grandTotal = subtotal + shippingFee - discount
+→ tạo Order PENDING/UNPAID, tracking number; save
+→ tăng usedCount coupon nếu có
+→ tạo OrderItem, trừ tồn kho, soft delete cart items; lưu items và TrackingLog
+→ map Order + items → ApiResponse<OrderResponse>
 ```
 
-#### `PUT /api/v1/orders/{orderId}/cancel` — hủy đơn
+Nếu tồn kho thiếu trả `INSUFFICIENT_ORDER_INVENTORY`. Chưa chặn cart rỗng, chưa tạo Payment/thực hiện giao dịch.
+
+### `GET /api/v1/orders?page_size=10&page_number=1`
 
 ```text
-orderId + username
-        ↓
-Tìm Order theo id + username + deleted=false → không có: ORDER_NOT_FOUND
-        ↓
-status là PENDING hoặc CONFIRMED?
-        ├─ Không → ORDER_CANNOT_BE_CANCELLED
-        └─ Có → đặt status=CANCELLED
-                    ↓
-              Tải OrderItems
-                    ↓
-              Mỗi item: variant.quantityInStock += item.quantity
-                    ↓
-              Tạo TrackingLog(CANCELLED, "Order cancelled by customer")
-                    ↓
-              save TrackingLog → controller trả message thành công
+USER + page query mặc định 10/1
+→ tìm user chưa xóa (không có: USER_NOT_FOUND)
+→ PageRequest(page_number - 1, page_size, createdAt DESC)
+→ tìm order của user deleted=false → map OrderSummaryResponse
+→ ApiResponse<Page<OrderSummaryResponse>>
 ```
 
-Lưu ý: coupon `usedCount` không hoàn lại; paymentStatus không đổi.
-
-## Đơn hàng quản trị — `/api/v1/admin/orders` (ADMIN)
-
-#### `GET /api/v1/admin/orders?page_size=10&page_number=1` — danh sách đơn
+### `GET /api/v1/orders/filter?status=...&page_size=10&page_number=1`
 
 ```text
-page_size/page_number (mặc định 10/1)
-        ↓
-PageRequest(page_number - 1, page_size, createdAt DESC)
-        ↓
-Tìm Order deleted=false
-        ↓
-Map AdminOrderResponse (id→orderId, createdAt→createdDate,
-grandTotal→amount, user.fullName→customerName)
+USER + status bắt buộc + page query mặc định 10/1
+→ tìm user chưa xóa
+→ Specification order deleted=false AND user hiện tại AND status
+→ PageRequest(createdAt DESC) → map OrderSummaryResponse
+→ ApiResponse<Page<OrderSummaryResponse>>
 ```
 
-#### `GET /api/v1/admin/orders/filter?status=&page_size=10&page_number=1` — lọc đơn theo trạng thái
+### `GET /api/v1/orders/{orderId}`
 
 ```text
-status + page_size/page_number
-        ↓
-PageRequest(page_number - 1, page_size, createdAt DESC)
-        ↓
-Specification: deleted=false AND status=request.status
-        ↓
-findAll(specification, pageable) → map AdminOrderResponse
+USER + orderId + principal username
+→ tìm order ID + user username + deleted=false
+→ không có/không thuộc user: ORDER_NOT_FOUND
+→ tải order items, map OrderResponse và gắn items
+→ ApiResponse<OrderResponse>
 ```
 
-#### `GET /api/v1/admin/orders/{orderId}` — chi tiết đơn quản trị
+### `PUT /api/v1/orders/{orderId}/cancel`
 
 ```text
-orderId → tìm Order deleted=false → không có: ORDER_NOT_FOUND
-        ↓
-Map OrderResponse → tìm OrderItems theo orderId
-        ↓
-Map items → gắn vào response → trả về
+USER + orderId → tìm order theo user và deleted=false (không có: ORDER_NOT_FOUND)
+→ chỉ PENDING/CONFIRMED được hủy; trạng thái khác: ORDER_CANNOT_BE_CANCELLED
+→ set CANCELLED, cộng lại số lượng variant cho mỗi order item
+→ lưu TrackingLog(CANCELLED)
+→ ApiResponse<Void>(message="Huy don hang thanh cong")
 ```
 
-#### `PATCH /api/v1/admin/orders/{orderId}/status?status=` — cập nhật trạng thái
+Không hoàn usedCount coupon và không đổi paymentStatus.
+
+## Order quản trị (ADMIN)
+
+### `GET /api/v1/admin/orders?page_size=10&page_number=1`
 
 ```text
-orderId + trạng thái đích
-        ↓
-Tìm Order deleted=false → không có: ORDER_NOT_FOUND
-        ↓
-currentStatus.canTransitionTo(newStatus)?
-        ├─ Không → INVALID_ORDER_STATUS_TRANSITION
-        └─ Có → cập nhật Order.status
-                    ↓
-              Tạo TrackingLog(newStatus, "Order updated by admin") → save
-                    ↓
-              Map OrderResponse (không gắn items)
+ADMIN + page query mặc định 10/1 → PageRequest(createdAt DESC)
+→ findAllByDeletedFalse → map AdminOrderResponse
+→ ApiResponse<Page<AdminOrderResponse>>
 ```
 
-Chuyển tiếp hợp lệ: PENDING→CONFIRMED→PICKING→SHIPPING; SHIPPING→DELIVERED hoặc FAILED; FAILED→RETURNING hoặc REATTEMPT. CANCELLED/REJECTED không được chuyển đến từ hàm này.
-
-## Coupon quản trị — `/api/v1/admin/coupons` (ADMIN)
-
-#### `POST /api/v1/admin/coupons` — tạo coupon
+### `GET /api/v1/admin/orders/filter?status=...&page_size=10&page_number=1`
 
 ```text
-CouponCreateRequest JSON + validation
-        ↓
-Code trùng coupon chưa xóa?
-        ├─ Có → COUPON_ALREADY_EXISTS
-        └─ Không → map request → Coupon
-                    ↓
-              đặt deleted=false → save
-                    ↓
-              map CouponResponse
+ADMIN + status bắt buộc + page query mặc định 10/1
+→ Specification deleted=false AND status; fetch user
+→ PageRequest(createdAt DESC) → map AdminOrderResponse
+→ ApiResponse<Page<AdminOrderResponse>>
 ```
 
-#### `GET /api/v1/admin/coupons?page_size=&page_number=` — danh sách coupon
+### `GET /api/v1/admin/orders/{orderId}`
 
 ```text
-page_size + page_number (bắt buộc)
-        ↓
-PageRequest(page_number - 1, page_size)
-        ↓
-findAllByDeletedFalse → map CouponResponse
+ADMIN + orderId → tìm order deleted=false (không có: ORDER_NOT_FOUND)
+→ tải items, map OrderResponse + items
+→ ApiResponse<OrderResponse>
 ```
 
-#### `GET /api/v1/admin/coupons/{couponId}` — chi tiết coupon
+### `PATCH /api/v1/admin/orders/{orderId}/status?status=...`
 
 ```text
-couponId → tìm coupon deleted=false
-        ├─ Không có → COUPONNOTFOUND
-        └─ Có → map CouponResponse
+ADMIN + orderId + trạng thái đích
+→ tìm order deleted=false (không có: ORDER_NOT_FOUND)
+→ chỉ PENDING→CONFIRMED hoặc CONFIRMED→PICKING và phải hợp lệ theo transition
+→ transition sai: INVALID_ORDER_STATUS_TRANSITION
+→ khi CONFIRMED: tìm và gán shipper theo province (không có: SHIPPER_NOT_FOUND)
+→ cập nhật order, ghi TrackingLog
+→ map OrderResponse (response luồng này không gắn items)
 ```
 
-#### `PUT /api/v1/admin/coupons/{couponId}` — cập nhật coupon
+## Order shipper (SHIPPER)
+
+### `GET /api/v1/shipper/orders/?page_size=10&page_number=1`
 
 ```text
-couponId + CouponUpdateRequest JSON
-        ↓
-Tìm coupon deleted=false → không có: COUPONNOTFOUND
-        ↓
-CouponMapper.updateCoupon(request, coupon)
-        ↓
-Map CouponResponse
+SHIPPER + page query mặc định 10/1 + principal username
+→ tìm user shipper chưa xóa (không có: USER_NOT_FOUND)
+→ PageRequest(createdAt DESC), tìm order được gán cho shipper và chưa xóa
+→ map ShipperOrderResponse → ApiResponse<Page<ShipperOrderResponse>>
 ```
 
-Request update không có code nên không đổi coupon code.
-
-#### `DELETE /api/v1/admin/coupons/{couponId}` — xóa coupon
+### `PATCH /api/v1/shipper/orders/{orderId}/status?status=...`
 
 ```text
-couponId → tìm coupon deleted=false → không có: COUPONNOTFOUND
-        ↓
-đặt deleted=true (soft delete) → controller trả message thành công
+SHIPPER + orderId + trạng thái đích + principal username
+→ tìm order deleted=false (không có: ORDER_NOT_FOUND)
+→ kiểm tra shipper được gán đúng principal; sai: UNAUTHORIZED
+→ chỉ PICKING→SHIPPING hoặc SHIPPING→DELIVERED/FAILED; sai: INVALID_ORDER_STATUS_TRANSITION
+→ cập nhật status, tạo notification cho SHIPPING/DELIVERED, ghi TrackingLog
+→ map ShipperOrderResponse → ApiResponse<ShipperOrderResponse>
 ```
 
-#### `PATCH /api/v1/admin/coupons/{couponId}/status?status=` — cập nhật trạng thái coupon
+## Coupon quản trị (ADMIN)
+
+### `POST /api/v1/admin/coupons`
 
 ```text
-couponId + CouponStatus
-        ↓
-Tìm coupon deleted=false → không có: COUPONNOTFOUND
-        ↓
-Gán coupon.status = status → map CouponResponse
+JSON CouponCreateRequest → Bean Validation
+→ endDate phải sau startDate; percentage ≤100; min/max order value không âm; usageLimit null hoặc ≥1
+→ trim/uppercase code; kiểm tra code trùng → COUPON_ALREADY_EXISTS
+→ map Coupon, set deleted=false, save
+→ map CouponResponse → ApiResponse<CouponResponse>
 ```
 
-#### `GET /api/v1/admin/coupons/filter?code=&status=&discount_type=&start_date_from=&start_date_to=&end_date_from=&end_date_to=&page=1&size=10` — lọc coupon
+### `GET /api/v1/admin/coupons?page_size=...&page_number=...`
 
 ```text
-Filter tùy chọn (date-time ISO) + page/size (mặc định 1/10)
-        ↓
-Specification deleted=false
-        ↓
-code? → AND code LIKE "%code%"
-status? → AND status = status
-discount_type? → AND discountType = discount_type
-start_date_from/to? → AND startDate >= from, <= to
-end_date_from/to? → AND endDate >= from, <= to
-        ↓
-PageRequest(page - 1, size, createdAt DESC)
-        ↓
-findAll(specification, pageable) → map CouponResponse
+ADMIN + hai query bắt buộc → PageRequest(page_number - 1, page_size)
+→ findAllByDeletedFalse → map CouponResponse
+→ ApiResponse<Page<CouponResponse>>
 ```
 
-## Ghi chú chung
+### `GET /api/v1/admin/coupons/{couponId}`
 
-- Hầu hết thao tác delete là soft delete (`deleted=true`), không xóa vật lý.
-- Ảnh được upload qua Cloudinary; implementation đang dùng folder `ecommerce/categories` cho mọi loại ảnh.
-- Filter nhận page bắt đầu từ 1 và service đổi về 0-based; page/size không hợp lệ chưa được chuẩn hóa thành lỗi riêng.
-- `AppException` được `GlobalExceptionHandler` chuyển thành HTTP status, code và message. Chưa thấy handler tổng quát cho mọi lỗi khác.
-- Nội dung phản ánh code trong controller/service hiện tại; route chưa có controller không có flow tương ứng.
+```text
+couponId → findByIdAndDeletedFalse
+→ không có: COUPON_NOT_FOUND
+→ có: map CouponResponse → ApiResponse<CouponResponse>
+```
+
+### `PUT /api/v1/admin/coupons/{couponId}`
+
+```text
+JSON CouponUpdateRequest dạng partial → tìm coupon chưa xóa (không có: COUPON_NOT_FOUND)
+→ min/max order value không âm, usageLimit null hoặc ≥1
+→ validate ngày và discount trên các giá trị cuối sau update
+→ MapStruct update trường khác null; DTO không có code nên không đổi code
+→ map CouponResponse → ApiResponse<CouponResponse>
+```
+
+### `DELETE /api/v1/admin/coupons/{couponId}`
+
+```text
+couponId → tìm coupon chưa xóa (không có: COUPON_NOT_FOUND)
+→ set deleted=true
+→ ApiResponse<Void>(message="Delete Coupon Successfully")
+```
+
+### `PATCH /api/v1/admin/coupons/{couponId}/status?status=...`
+
+```text
+couponId + CouponStatus → tìm coupon chưa xóa (không có: COUPON_NOT_FOUND)
+→ status null: INVALID_COUPON_VALUES; ngược lại gán status
+→ map CouponResponse → ApiResponse<CouponResponse>
+```
+
+### `GET /api/v1/admin/coupons/filter?code=&status=&discount_type=&start_date_from=&start_date_to=&end_date_from=&end_date_to=&page=1&size=10`
+
+```text
+filter tùy chọn (date-time ISO) → Specification deleted=false
+→ code LIKE, status/discountType bằng; các mốc from/to áp dụng >= hoặc <= tương ứng
+→ PageRequest(page - 1, size, createdAt DESC)
+→ map CouponResponse → ApiResponse<Page<CouponResponse>>
+```
+
+## Ghi chú tồn tại trong code
+
+- `/api/v1/auth/me` đang permitAll nhưng cần Principal; `/api/v1/auth/login` trả Base64 credentials chứ không phải JWT.
+- Tạo variant có SKU trùng hiện trả nhầm mã `PRODUCT_VARIANT_NAME_ALREADY_EXISTS`.
+- Update cart item thiếu validation quantity null/0/âm; tạo order chưa chặn cart rỗng.
+- Một số ErrorCode inventory legacy không có entity/API inventory tương ứng.
+- Phân trang được truyền thẳng vào Spring Data, không có bước validate page/size riêng.

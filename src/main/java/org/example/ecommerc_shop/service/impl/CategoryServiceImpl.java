@@ -37,7 +37,7 @@ public class CategoryServiceImpl implements CategoryService {
     @Transactional
     public CategoryResponse createCategory(CategoryCreateRequest request) {
         if (categoryRepository.existsByNameAndDeletedFalse(request.getName())) {
-            throw new AppException(ErrorCode.CATEGORY_NAME_EXISTED);
+            throw new AppException(ErrorCode.CATEGORY_NAME_ALREADY_EXISTS);
         }
         Category parentCategory = null;
         if (request.getParentId() != null) {
@@ -118,7 +118,15 @@ public class CategoryServiceImpl implements CategoryService {
                 .orElseThrow(() ->
                         new AppException(ErrorCode.CATEGORY_NOT_FOUND));
         if (request.getName() != null && !request.getName().isBlank()) {
-            category.setName(request.getName());
+            String normalizedName = request.getName().trim();
+            if (!category.getName().equals(normalizedName)
+                    && categoryRepository.existsByNameAndDeletedFalseAndIdNot(normalizedName, id)) {
+                throw new AppException(ErrorCode.CATEGORY_NAME_ALREADY_EXISTS);
+            }
+            category.setName(normalizedName);
+        }
+        if (request.getDescription() != null) {
+            category.setDescription(request.getDescription());
         }
         if (request.getParentId() != null) {
             if (request.getParentId().isBlank()) {
@@ -131,6 +139,9 @@ public class CategoryServiceImpl implements CategoryService {
                         .findByIdAndDeletedFalse(request.getParentId())
                         .orElseThrow(() ->
                                 new AppException(ErrorCode.CATEGORY_NOT_FOUND));
+                if (isDescendant(parentCategory, id)) {
+                    throw new AppException(ErrorCode.INVALID_PARENT_CATEGORY);
+                }
                 category.setParentId(parentCategory);
             }
         }
@@ -139,18 +150,9 @@ public class CategoryServiceImpl implements CategoryService {
             CloudinaryUploadResponse uploadResult = cloudinaryService.uploadImage(request.getImage());
             category.setImageUrl(uploadResult.getUrl());
             category.setImagePublicId(uploadResult.getPublicId());
-            if (oldPublicId != null) {
+            if (oldPublicId != null && !oldPublicId.isBlank()) {
                 cloudinaryService.deleteImage(oldPublicId);
             }
-        }
-        if (request.getParentId() != null && !request.getParentId().isBlank()) {
-            if (id.equals(request.getParentId())) {
-                throw new AppException(ErrorCode.INVALID_PARENT_CATEGORY);
-            }
-            Category parentCategory = categoryRepository
-                    .findByIdAndDeletedFalse(request.getParentId())
-                    .orElseThrow(() -> new AppException(ErrorCode.CATEGORY_NOT_FOUND));
-            category.setParentId(parentCategory);
         }
         return categoryMapper.toCategoryResponse(category);
     }
@@ -177,17 +179,34 @@ public class CategoryServiceImpl implements CategoryService {
 
         List<String> result = new ArrayList<>();
 
+        if (categories.stream().noneMatch(category -> category.getId().equals(categoryId))) {
+            throw new AppException(ErrorCode.CATEGORY_NOT_FOUND);
+        }
         collectCategoryIds(categoryId, categories, result);
 
         return result;
     }
 
     private void collectCategoryIds(String categoryId, List<Category> categories, List<String> result) {
+        if (result.contains(categoryId)) {
+            return;
+        }
         result.add(categoryId);
         for (Category category : categories) {
             if (category.getParentId() != null && category.getParentId().getId().equals(categoryId)) {
                 collectCategoryIds(category.getId(), categories, result);
             }
         }
+    }
+
+    private boolean isDescendant(Category candidate, String categoryId) {
+        Category current = candidate;
+        while (current != null) {
+            if (categoryId.equals(current.getId())) {
+                return true;
+            }
+            current = current.getParentId();
+        }
+        return false;
     }
 }

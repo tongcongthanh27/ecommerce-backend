@@ -20,6 +20,7 @@ public class UserUpdateRequest implements Serializable {
     @Email(message = "Email không đúng định dạng")
     private String email;
 
+    @NotBlank
     private String fullName;
 
     @Pattern(
@@ -30,8 +31,10 @@ public class UserUpdateRequest implements Serializable {
 
     private String province;
 
+    @NotBlank
     private String city;
 
+    @NotBlank
     private String addressDetail;
 
     private MultipartFile avatarUrl;
