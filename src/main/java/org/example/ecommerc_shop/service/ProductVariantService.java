@@ -3,9 +3,11 @@ package org.example.ecommerc_shop.service;
 import org.example.ecommerc_shop.dto.request.ProductVariantCreateRequest;
 import org.example.ecommerc_shop.dto.request.ProductVariantUpdateRequest;
 import org.example.ecommerc_shop.dto.response.ProductVariantResponse;
+import org.example.ecommerc_shop.dto.response.ProductVariantStatisticsResponse;
 import org.springframework.data.domain.Page;
 
 import java.math.BigDecimal;
+import java.io.OutputStream;
 
 public interface ProductVariantService {
     ProductVariantResponse createVariant(String id, ProductVariantCreateRequest request);
@@ -21,4 +23,6 @@ public interface ProductVariantService {
             int page,
             int size
     );
+    void exportVariants(OutputStream outputStream);
+    ProductVariantStatisticsResponse getStatistics();
 }

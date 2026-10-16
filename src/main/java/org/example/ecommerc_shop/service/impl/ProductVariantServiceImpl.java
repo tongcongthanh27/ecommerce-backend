@@ -1,11 +1,15 @@
 package org.example.ecommerc_shop.service.impl;
 
+import com.alibaba.excel.EasyExcel;
+import com.alibaba.excel.ExcelWriter;
+import com.alibaba.excel.write.metadata.WriteSheet;
 import lombok.RequiredArgsConstructor;
 import org.example.ecommerc_shop.common.StockStatus;
 import org.example.ecommerc_shop.dto.request.ProductVariantCreateRequest;
 import org.example.ecommerc_shop.dto.request.ProductVariantUpdateRequest;
 import org.example.ecommerc_shop.dto.response.CloudinaryUploadResponse;
 import org.example.ecommerc_shop.dto.response.ProductVariantResponse;
+import org.example.ecommerc_shop.dto.response.ProductVariantExcelExport;
 import org.example.ecommerc_shop.entity.Product;
 import org.example.ecommerc_shop.entity.ProductVariant;
 import org.example.ecommerc_shop.exception.AppException;
@@ -20,16 +24,20 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.domain.Slice;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.io.OutputStream;
+import java.util.List;
 import java.util.Locale;
 
 @Service
 @RequiredArgsConstructor
 public class ProductVariantServiceImpl implements ProductVariantService {
+    private static final int EXPORT_BATCH_SIZE = 500;
     private final ProductVariantRepository productVariantRepository;
     private final ProductRepository productRepository;
     private final CloudinaryService cloudinaryService;
@@ -173,4 +181,53 @@ public class ProductVariantServiceImpl implements ProductVariantService {
                     return response;
                 });
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public void exportVariants(OutputStream outputStream) {
+        try (ExcelWriter writer = EasyExcel.write(outputStream, ProductVariantExcelExport.class).build()) {
+            WriteSheet sheet = EasyExcel.writerSheet("Product Variants").build();
+            int pageNo = 0;
+            while (true) {
+                Pageable pageable = PageRequest.of(pageNo, EXPORT_BATCH_SIZE, Sort.by(
+                        Sort.Order.desc("createdAt"), Sort.Order.desc("id")));
+                Slice<ProductVariant> slice = productVariantRepository.findForExport(pageable);
+                if (slice.isEmpty()) {
+                    break;
+                }
+                List<ProductVariantExcelExport> batch = slice.getContent().stream()
+                        .map(productVariantMapper::toExcelExport)
+                        .toList();
+                writer.write(batch, sheet);
+                if (!slice.hasNext()) {
+                    break;
+                }
+                pageNo++;
+            }
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public org.example.ecommerc_shop.dto.response.ProductVariantStatisticsResponse getStatistics() {
+        var row = productVariantRepository.getStatistics(5);
+        if (row == null) {
+            return org.example.ecommerc_shop.dto.response.ProductVariantStatisticsResponse.builder()
+                    .totalVariants(0).inStockVariants(0).lowStockVariants(0)
+                    .outOfStockVariants(0).totalQuantityInStock(0).averagePrice(BigDecimal.ZERO).build();
+        }
+        return org.example.ecommerc_shop.dto.response.ProductVariantStatisticsResponse.builder()
+                .totalVariants(value(row.getTotalVariants()))
+                .inStockVariants(value(row.getInStockVariants()))
+                .lowStockVariants(value(row.getLowStockVariants()))
+                .outOfStockVariants(value(row.getOutOfStockVariants()))
+                .totalQuantityInStock(value(row.getTotalQuantityInStock()))
+                .averagePrice(row.getAveragePrice() == null ? BigDecimal.ZERO : row.getAveragePrice())
+                .build();
+    }
+
+    private long value(Long value) {
+        return value == null ? 0L : value;
+    }
+
 }

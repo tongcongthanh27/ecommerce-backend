@@ -30,6 +30,7 @@ public enum ErrorCode {
     PRODUCT_VARIANT_SKU_ALREADY_EXISTS(1020, "Product variant SKU already exists", HttpStatus.CONFLICT),
     INSUFFICIENT_ORDER_INVENTORY(1021, "Insufficient product inventory", HttpStatus.BAD_REQUEST),
     ORDER_NOT_FOUND(1022, "Order not found", HttpStatus.NOT_FOUND),
+    ORDER_TRACKING_NOT_AVAILABLE(1035, "Order tracking is available after confirmation", HttpStatus.BAD_REQUEST),
     OUT_OF_STOCK(1023, "Product is out of stock", HttpStatus.BAD_REQUEST),
     ORDER_CANNOT_BE_CANCELLED(1024, "Order cannot be cancelled at its current status", HttpStatus.BAD_REQUEST),
     INVALID_ORDER_STATUS_TRANSITION(1025, "Invalid order status transition", HttpStatus.BAD_REQUEST),

@@ -6,7 +6,12 @@ import org.example.ecommerc_shop.dto.response.AdminOrderResponse;
 import org.example.ecommerc_shop.dto.response.OrderResponse;
 import org.example.ecommerc_shop.dto.response.OrderSummaryResponse;
 import org.example.ecommerc_shop.dto.response.ShipperOrderResponse;
+import org.example.ecommerc_shop.dto.response.TrackingLogResponse;
+import org.example.ecommerc_shop.dto.response.OrderStatisticsResponse;
 import org.springframework.data.domain.Page;
+import java.util.List;
+
+import java.io.OutputStream;
 
 public interface OrderService {
     OrderResponse createOrder(OrderCreateRequest request, String username);
@@ -20,5 +25,7 @@ public interface OrderService {
     OrderResponse updateOrderStatus(String orderId, OrderStatus orderStatus);
     Page<ShipperOrderResponse> getAllOrderForShipper(Integer pageSize, Integer pageNumber, String shipperName);
     ShipperOrderResponse updateOrderStatusByShipper(String orderId, OrderStatus orderStatus, String shipperName);
-
+    void exportOrders(OrderStatus status, String keyword, OutputStream outputStream);
+    List<TrackingLogResponse> getOrderTracking(String orderId, String username);
+    OrderStatisticsResponse getStatistics();
 }

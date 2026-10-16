@@ -2,10 +2,7 @@ package org.example.ecommerc_shop.mapper;
 
 import org.aspectj.weaver.ast.Or;
 import org.example.ecommerc_shop.dto.request.OrderCreateRequest;
-import org.example.ecommerc_shop.dto.response.AdminOrderResponse;
-import org.example.ecommerc_shop.dto.response.OrderResponse;
-import org.example.ecommerc_shop.dto.response.OrderSummaryResponse;
-import org.example.ecommerc_shop.dto.response.ShipperOrderResponse;
+import org.example.ecommerc_shop.dto.response.*;
 import org.example.ecommerc_shop.entity.Order;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
@@ -44,4 +41,6 @@ public interface OrderMapper {
     @Mapping(source = "grandTotal", target = "amount")
     @Mapping(source = "user.fullName", target = "customerName")
     ShipperOrderResponse toShipperOrderResponse(Order order);
+
+    OrderExcelExport toExcelExport(Order order);
 }

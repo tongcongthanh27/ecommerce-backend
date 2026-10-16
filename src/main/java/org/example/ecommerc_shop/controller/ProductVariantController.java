@@ -6,11 +6,16 @@ import org.example.ecommerc_shop.dto.ApiResponse;
 import org.example.ecommerc_shop.dto.request.ProductVariantCreateRequest;
 import org.example.ecommerc_shop.dto.request.ProductVariantUpdateRequest;
 import org.example.ecommerc_shop.dto.response.ProductVariantResponse;
+import org.example.ecommerc_shop.dto.response.ProductVariantStatisticsResponse;
 import org.example.ecommerc_shop.service.ProductVariantService;
 import org.springframework.data.domain.Page;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.http.HttpHeaders;
+
+import java.io.IOException;
 
 import java.math.BigDecimal;
 import org.example.ecommerc_shop.exception.AppException;
@@ -58,6 +63,14 @@ public class ProductVariantController {
     }
 
     @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping("/admin/product-variants/statistics")
+    public ApiResponse<ProductVariantStatisticsResponse> getStatistics() {
+        return ApiResponse.<ProductVariantStatisticsResponse>builder()
+                .result(productVariantService.getStatistics())
+                .build();
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/admin/product-variants/filter")
     public ApiResponse<Page<ProductVariantResponse>> filter(
             @RequestParam(name = "variant_name", required = false) String variantName,
@@ -71,5 +84,14 @@ public class ProductVariantController {
         return ApiResponse.<Page<ProductVariantResponse>>builder()
                 .result(productVariantService.filter(variantName, sku, productId, minPrice, maxPrice, page, size))
                 .build();
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping("/admin/product-variants/export")
+    public void exportVariants(HttpServletResponse response) throws IOException {
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        response.setCharacterEncoding("UTF-8");
+        response.setHeader(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=product-variants.xlsx");
+        productVariantService.exportVariants(response.getOutputStream());
     }
 }

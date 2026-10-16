@@ -1,19 +1,19 @@
 package org.example.ecommerc_shop.controller;
 
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.example.ecommerc_shop.common.OrderStatus;
 import org.example.ecommerc_shop.dto.ApiResponse;
 import org.example.ecommerc_shop.dto.request.OrderCreateRequest;
-import org.example.ecommerc_shop.dto.response.AdminOrderResponse;
-import org.example.ecommerc_shop.dto.response.OrderResponse;
-import org.example.ecommerc_shop.dto.response.OrderSummaryResponse;
-import org.example.ecommerc_shop.dto.response.ShipperOrderResponse;
+import org.example.ecommerc_shop.dto.response.*;
 import org.example.ecommerc_shop.service.OrderService;
 import org.springframework.data.domain.Page;
+import org.springframework.http.HttpHeaders;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.io.IOException;
 import java.security.Principal;
 
 @RestController
@@ -58,6 +58,23 @@ public class OrderController {
     public ApiResponse<OrderResponse> getOrderById(@PathVariable String orderId, Principal principal){
         return ApiResponse.<OrderResponse>builder()
                 .result(orderService.getOrderById(orderId, principal.getName()))
+                .build();
+    }
+
+    @PreAuthorize("hasRole('USER')")
+    @GetMapping("/orders/{orderId}/tracking")
+    public ApiResponse<java.util.List<TrackingLogResponse>> getOrderTracking(
+            @PathVariable String orderId, Principal principal) {
+        return ApiResponse.<java.util.List<TrackingLogResponse>>builder()
+                .result(orderService.getOrderTracking(orderId, principal.getName()))
+                .build();
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping("/admin/orders/statistics")
+    public ApiResponse<OrderStatisticsResponse> getOrderStatistics() {
+        return ApiResponse.<OrderStatisticsResponse>builder()
+                .result(orderService.getStatistics())
                 .build();
     }
 
@@ -131,4 +148,13 @@ public class OrderController {
                 .result(orderService.updateOrderStatusByShipper(orderId, status, principal.getName()))
                 .build();
    }
+
+    @GetMapping("/admin/order/export")
+    @PreAuthorize("hasRole('ADMIN')")
+    public void exportOrders(@RequestParam(required = false) OrderStatus status, @RequestParam(required = false) String keyword, HttpServletResponse response) throws IOException {
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        response.setCharacterEncoding("UTF-8");
+        response.setHeader(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=orders.xlsx");
+        orderService.exportOrders(status, keyword, response.getOutputStream());
+    }
 }

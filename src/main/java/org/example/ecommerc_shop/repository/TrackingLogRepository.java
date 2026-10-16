@@ -8,5 +8,5 @@ import java.util.List;
 
 @Repository
 public interface TrackingLogRepository extends JpaRepository<TrackingLog, String> {
-    List<TrackingLog> findByOrderIdOrderByCreatedAtAsc(String orderId);
+    List<TrackingLog> findByOrderIdAndDeletedFalseOrderByCreatedAtAsc(String orderId);
 }

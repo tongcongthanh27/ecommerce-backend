@@ -1,5 +1,8 @@
 package org.example.ecommerc_shop.service.impl;
 
+import com.alibaba.excel.EasyExcel;
+import com.alibaba.excel.ExcelWriter;
+import com.alibaba.excel.write.metadata.WriteSheet;
 import lombok.RequiredArgsConstructor;
 import org.example.ecommerc_shop.common.*;
 import org.example.ecommerc_shop.dto.request.OrderCreateRequest;
@@ -9,17 +12,16 @@ import org.example.ecommerc_shop.exception.AppException;
 import org.example.ecommerc_shop.exception.ErrorCode;
 import org.example.ecommerc_shop.mapper.OrderItemMapper;
 import org.example.ecommerc_shop.mapper.OrderMapper;
+import org.example.ecommerc_shop.mapper.TracklingLogMapper;
 import org.example.ecommerc_shop.repository.*;
 import org.example.ecommerc_shop.service.OrderService;
 import org.example.ecommerc_shop.service.specification.OrderSpec;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
+import org.springframework.data.domain.*;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.OutputStream;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -30,11 +32,13 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class OrderServiceImpl implements OrderService {
+    private static final int BATCH_SIZE = 500;
     private final OrderRepository orderRepository;
     private final CartRepository cartRepository;
     private final CartItemRepository cartItemRepository;
     private final CouponRepository couponRepository;
     private final OrderMapper orderMapper;
+    private final TracklingLogMapper tracklingLogMapper;
     private final UserRepository userRepository;
     private final OrderItemRepository orderItemRepository;
     private final OrderItemMapper orderItemMapper;
@@ -85,6 +89,39 @@ public class OrderServiceImpl implements OrderService {
         }
         response.setItems(itemResponses);
         return response;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<TrackingLogResponse> getOrderTracking(String orderId, String username) {
+        Order order = orderRepository.findByIdAndUserUsernameAndDeletedFalse(orderId, username)
+                .orElseThrow(() -> new AppException(ErrorCode.ORDER_NOT_FOUND));
+        if (order.getStatus() != OrderStatus.CONFIRMED
+                && order.getStatus() != OrderStatus.PICKING
+                && order.getStatus() != OrderStatus.SHIPPING
+                && order.getStatus() != OrderStatus.DELIVERED
+                && order.getStatus() != OrderStatus.FAILED
+                && order.getStatus() != OrderStatus.REATTEMPT
+                && order.getStatus() != OrderStatus.RETURNING) {
+            throw new AppException(ErrorCode.ORDER_TRACKING_NOT_AVAILABLE);
+        }
+        return trackingLogRepository.findByOrderIdAndDeletedFalseOrderByCreatedAtAsc(orderId).stream()
+                .map(tracklingLogMapper::toTrackingLogResponse)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public OrderStatisticsResponse getStatistics() {
+        java.util.Map<OrderStatus, Long> byStatus = new java.util.EnumMap<>(OrderStatus.class);
+        for (OrderStatus status : OrderStatus.values()) byStatus.put(status, 0L);
+        orderRepository.countOrdersByStatus().forEach(row -> byStatus.put(row.getStatus(), row.getTotal()));
+        return OrderStatisticsResponse.builder()
+                .totalOrders(orderRepository.countByDeletedFalse())
+                .ordersByStatus(byStatus)
+                .totalRevenue(orderRepository.sumPaidOrderTotals())
+                .deliveredRevenue(orderRepository.sumDeliveredOrderTotals())
+                .build();
     }
 
     @Override
@@ -250,5 +287,31 @@ public class OrderServiceImpl implements OrderService {
         notification.setStatus(NotificationStatus.PENDING);
 
         notificationRepository.save(notification);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public void exportOrders(OrderStatus status, String keyword, OutputStream outputStream) {
+        try (ExcelWriter writer = EasyExcel.write(outputStream, OrderExcelExport.class).build()) {
+            WriteSheet sheet = EasyExcel.writerSheet("Orders").build();
+            int pageNo = 0;
+            while (true) {
+                Pageable pageable = PageRequest.of(pageNo, BATCH_SIZE, Sort.by(
+                                Sort.Order.desc("createdAt"),
+                                Sort.Order.desc("id")
+                        )
+                );
+                Slice<Order> slice = orderRepository.findForExport(status, keyword, pageable);
+                if (slice.isEmpty()) {
+                    break;
+                }
+                List<OrderExcelExport> batch = slice.getContent().stream().map(orderMapper::toExcelExport).toList();
+                writer.write(batch, sheet);
+                if (!slice.hasNext()) {
+                    break;
+                }
+                pageNo++;
+            }
+        }
     }
 }

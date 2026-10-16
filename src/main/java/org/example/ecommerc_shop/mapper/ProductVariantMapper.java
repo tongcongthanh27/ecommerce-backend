@@ -3,6 +3,7 @@ package org.example.ecommerc_shop.mapper;
 import org.example.ecommerc_shop.dto.request.ProductVariantCreateRequest;
 import org.example.ecommerc_shop.dto.request.ProductVariantUpdateRequest;
 import org.example.ecommerc_shop.dto.response.ProductVariantResponse;
+import org.example.ecommerc_shop.dto.response.ProductVariantExcelExport;
 import org.example.ecommerc_shop.entity.ProductVariant;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
@@ -17,6 +18,10 @@ public interface ProductVariantMapper {
     @Mapping(source = "product.id", target = "productId")
     @Mapping(source = "product.name", target = "productName")
     ProductVariantResponse toVariantResponse(ProductVariant productVariant);
+
+    @Mapping(source = "product.id", target = "productId")
+    @Mapping(source = "product.name", target = "productName")
+    ProductVariantExcelExport toExcelExport(ProductVariant productVariant);
 
     void updateVariant(
             ProductVariantUpdateRequest request,
