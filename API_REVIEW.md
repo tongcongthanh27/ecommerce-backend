@@ -1,253 +1,411 @@
-# API backend — luồng xử lý theo từng endpoint
+# API Review — project hiện tại
 
-Tài liệu này mô tả luồng theo controller, DTO, service, repository và mapper hiện tại. Với mỗi endpoint, luồng đi theo thứ tự request → validation/quyền → truy vấn/kiểm tra → cập nhật dữ liệu → response. `page` và `page_number` bắt đầu từ 1 ở API, service trừ 1 khi tạo `PageRequest`; không có kiểm tra page/size riêng. Các tham số page/size bắt buộc hay mặc định theo đúng khai báo ở controller.
+Tài liệu này mô tả luồng API thực tế của project, dựa trên mã nguồn đang có trong `controller`, `service`, `repository`, `exception`, và `config`. Mục tiêu là ghi lại cách project đang hoạt động, không mô tả theo suy đoán.
 
-## Quy ước chung
+## 1. Quy ước chung
 
-- Xác thực dùng HTTP Basic; CSRF/CORS bị disable. Swagger và `/api/v1/auth/**` permitAll; `/api/v1/admin/**` yêu cầu ADMIN; `/api/v1/shipper/**` yêu cầu SHIPPER; GET `/api/v1/categories/**` và `/api/v1/products/**` công khai. Cart và order khách yêu cầu USER qua `@PreAuthorize`.
-- Thành công thường trả `ApiResponse<T>`. Nếu controller không đặt code/message thì code mặc định là `0`, message null; auth đặt code `1000`. Delete thường trả message và không có result.
-- `AppException` trả HTTP status, code, message từ `ErrorCode`. Validation/bind/type mismatch/thiếu request parameter trả HTTP 400, code 400, message lỗi validation hoặc “Invalid request parameters”. Chưa có handler tổng quát cho mọi exception khác.
-- Ghi dữ liệu delete thường là soft delete (`deleted=true`). Ảnh dùng Cloudinary.
+### 1.1. Response format
+- Tất cả API thành công thường trả về `ApiResponse<T>`.
+- Class `ApiResponse` có 3 trường: `code`, `message`, `result`.
+- Đối với nhiều endpoint, `result` là `Page<T>`, `List<T>`, hoặc object DTO.
+- Khi controller không gắn `code`/`message`, các giá trị còn lại sẽ phụ thuộc vào builder ở mỗi method; không phải lúc nào cũng đồng nhất.
 
-## Auth
+### 1.2. Error handling
+- `AppException` được bắt ở `GlobalExceptionHandler`.
+- `ErrorCode` chứa mã lỗi, message và `HttpStatusCode`.
+- Validation errors (`@Valid`, `BindException`, `ConstraintViolationException`, `MethodArgumentTypeMismatchException`, `MissingServletRequestParameterException`) được trả về HTTP 400.
+- Chưa có handler chung cho mọi exception không phải `AppException` hoặc validation; vậy nên project vẫn còn chỗ để hoàn thiện.
+
+### 1.3. Soft delete
+- Nhiều entity dùng pattern `deleted = true` hoặc `findBy...DeletedFalse` thay vì xóa vật lý.
+- Dù `deleted` không xuất hiện ở mọi entity nhưng convention tổng quát là soft delete.
+
+### 1.4. Cấu hình bảo mật
+- `WebSecurityConfig` disable CSRF và CORS.
+- Dùng `httpBasic()`.
+- Public endpoints:
+  - `/v3/api-docs/**`
+  - `/swagger-ui/**`
+  - `/api/v1/auth/**`
+  - `GET /api/v1/categories/**`
+  - `GET /api/v1/products/**`
+- Admin-only: `/api/v1/admin/**`
+- Shipper-only: `/api/v1/shipper/**`
+- Các API khác yêu cầu xác thực theo username/password.
+
+## 2. Auth API
 
 ### `POST /api/v1/auth/register`
 
-```text
-JSON RegisterRequest
-→ Bean Validation (username/email/password/fullName/province/city/addressDetail bắt buộc; phone có thể null)
-→ AccountService kiểm tra username và email trùng
-→ Tạo User, BCrypt password, gán role USER và deleted=false
-→ Lưu User
-→ map LoginResponse
-→ ApiResponse(code=1000, message đăng ký thành công, result=LoginResponse)
-```
+Request:
+- `RegisterRequest`
+- `@Validated @RequestBody`
 
-Trùng username/email trả `USERNAME_ALREADY_EXISTS`/`EMAIL_ALREADY_EXISTS`.
+Luồng:
+1. Controller gọi `accountService.register(request)`.
+2. Service kiểm tra trùng username/email.
+3. Tạo `User` mới với password được mã hóa bằng BCrypt.
+4. Gán role `USER`.
+5. Lưu user vào DB.
+6. Map ra `LoginResponse`.
+7. Trả về `ApiResponse` với `code = 1000`, message `"Đăng ký thành công"`.
+
+Error chính:
+- `USERNAME_ALREADY_EXISTS`
+- `EMAIL_ALREADY_EXISTS`
 
 ### `POST /api/v1/auth/login`
 
-```text
-JSON LoginRequest(username, password)
-→ AuthenticationManager xác thực credentials
-→ Lấy User theo authentication name
-→ map LoginResponse
-→ gán token là Base64(username:password)
-→ ApiResponse(code=1000, message đăng nhập thành công, result=LoginResponse)
-```
+Request:
+- `LoginRequest` gồm `username` và `password`
 
-`token` này không phải JWT; cấu hình xác thực thực tế vẫn là HTTP Basic. Sai credentials do Spring Security xử lý.
+Luồng:
+1. `AuthenticationManager` xác thực bằng `UsernamePasswordAuthenticationToken`.
+2. Lấy user qua `authentication.getName()`.
+3. Map sang `LoginResponse`.
+4. Token được tạo bằng `Base64(username:password)`.
+5. Trả về `ApiResponse` với `code = 1000` và message `"Đăng nhập thành công"`.
+
+Lưu ý:
+- Đây không phải JWT.
+- Project đang dùng HTTP Basic authentication thực tế, nên `token` ở đây chỉ là chuỗi credentials dạng Base64 theo chuẩn Basic Auth.
 
 ### `GET /api/v1/auth/me`
 
-```text
-HTTP request → lấy Principal → tra User theo username → map LoginResponse
-→ ApiResponse(code=1000, message="Success", result=LoginResponse)
-```
+Luồng:
+1. Nhận `Principal` từ request.
+2. Lấy `username` từ principal.
+3. Tìm user trong DB.
+4. Map sang `LoginResponse`.
+5. Trả `ApiResponse` với code 1000.
 
-Security permitAll cho `/auth/**`, dù endpoint cần Principal. Gọi không xác thực có thể không có Principal và không được ánh xạ thành lỗi nghiệp vụ rõ ràng.
+Điểm cần lưu ý:
+- Endpoint này được permitAll theo config, nhưng thực chất cần principal. Nếu request không có auth, code sẽ có thể lỗi do `principal == null`.
 
-## User quản trị (`ADMIN`)
+## 3. User management (`/api/v1/admin/users`)
 
 ### `POST /api/v1/admin/users`
 
-```text
-multipart/form-data UserCreateRequest
-→ ADMIN + Bean Validation
-→ trim username/phone, lowercase email
-→ kiểm tra username/email/phone đã dùng bởi user chưa xóa
-→ map User, BCrypt password
-→ avatar có file? upload Cloudinary và gán URL/public ID
-→ save User
-→ ApiResponse<UserResponse> (có id, không trả password)
-```
+Request:
+- `UserCreateRequest` dạng `multipart/form-data`
 
-Lỗi trùng lần lượt: `USERNAME_ALREADY_EXISTS`, `EMAIL_ALREADY_EXISTS`, `PHONE_NUMBER_ALREADY_EXISTS`.
+Luồng:
+1. `ADMIN` role kiểm tra qua `@PreAuthorize`.
+2. Validation DTO.
+3. Normalize username/phone và lowercase email.
+4. Kiểm tra user với username/email/phone đã bị xóa chưa.
+5. Lưu user mới.
+6. Nếu có avatar, upload lên Cloudinary trước khi lưu.
+7. Trả `UserResponse`.
 
-### `GET /api/v1/admin/users?page_size=...&page_number=...`
+Error chính:
+- `USERNAME_ALREADY_EXISTS`
+- `EMAIL_ALREADY_EXISTS`
+- `PHONE_NUMBER_ALREADY_EXISTS`
 
-```text
-ADMIN + hai query bắt buộc
-→ PageRequest(page_number - 1, page_size)
-→ findAllByDeletedFalse
-→ map từng User thành UserResponse
-→ ApiResponse<Page<UserResponse>>
-```
+### `GET /api/v1/admin/users`
+
+Query:
+- `page_size`
+- `page_number`
+
+Luồng:
+1. Kiểm tra quyền admin.
+2. Gọi `userService.getAllUsers(pageSize, pageNumber)`.
+3. Service tạo `PageRequest` với `page_number - 1`.
+4. Query `findAllByDeletedFalse`.
+5. Map `User -> UserResponse`.
+6. Return `Page<UserResponse>`.
 
 ### `GET /api/v1/admin/users/{userId}`
-
-```text
-ADMIN + userId → findByIdAndDeletedFalse
-→ không có: USER_NOT_FOUND
-→ có: map UserResponse → ApiResponse<UserResponse>
-```
+- Lấy user theo `userId` và `deleted = false`
+- Nếu không tồn tại: `USER_NOT_FOUND`
 
 ### `PUT /api/v1/admin/users/{userId}`
-
-```text
-ADMIN + multipart UserUpdateRequest
-→ Bean Validation → tìm user chưa xóa (không có: USER_NOT_FOUND)
-→ từng trường khác null được cập nhật; chuỗi rỗng ở trường profile bị từ chối
-→ username/email/phone kiểm tra trùng trên user khác; chuẩn hóa username/email/phone
-→ avatar mới? upload Cloudinary, cập nhật URL/public ID rồi xóa ảnh cũ
-→ map UserResponse → ApiResponse<UserResponse>
-```
+- Dùng `multipart` để cập nhật user.
+- Chỉ cập nhật field không null.
+- Validate duplicate username/email/phone nếu trường đó được đổi.
+- Nếu có avatar mới, upload Cloudinary rồi xóa ảnh cũ.
 
 ### `DELETE /api/v1/admin/users/{userId}`
+- Soft delete user bằng `deleted = true`.
+- Trả message `Delete User Successfully`.
 
-```text
-ADMIN + userId → tìm user chưa xóa (không có: USER_NOT_FOUND)
-→ set deleted=true
-→ ApiResponse<Void>(message="Delete User Successfully")
-```
+### `PATCH /api/v1/admin/users/{userId}/role`
+- Tham số: `role` kiểu `UserRole`
+- Nếu `role == null`: `INVALID_USER_ROLE`
+- Gán role mới cho user.
 
-### `PATCH /api/v1/admin/users/{userId}/role?role=...`
+### `GET /api/v1/admin/users/filter`
+Query:
+- `username`
+- `email`
+- `full_name`
+- `role`
+- `page`
+- `size`
 
-```text
-ADMIN + userId + UserRole
-→ tìm user chưa xóa (không có: USER_NOT_FOUND)
-→ gán role
-→ map UserResponse → ApiResponse<UserResponse>
-```
+Luồng:
+1. Dùng `Specification` tích hợp điều kiện `deleted = false`.
+2. `LIKE` ở username/email/fullName.
+3. Match role exact.
+4. Sort theo `createdAt` DESC.
+5. Trả `Page<UserResponse>`.
 
-### `GET /api/v1/admin/users/filter?username=&email=&full_name=&role=&page=1&size=10`
+## 4. Category API
 
-```text
-ADMIN + các filter tùy chọn
-→ Specification bắt đầu bằng deleted=false
-→ username/email/full_name có giá trị: LIKE %value%; role có giá trị: bằng chính xác
-→ PageRequest(page - 1, size, createdAt DESC)
-→ findAll(specification) → map UserResponse
-→ ApiResponse<Page<UserResponse>>
-```
+### `POST /api/v1/admin/categories`
+- `ADMIN` only
+- Tạo category bằng `multipart/form-data`
+- Nếu tên category đã tồn tại: `CATEGORY_NAME_ALREADY_EXISTS`
+- Nếu `parentId` không hợp lệ: `CATEGORY_NOT_FOUND`
+- Nếu có ảnh: upload Cloudinary
 
-## Category
+### `GET /api/v1/categories`
+- Public
+- Default: `page_size=10`, `page_number=1`
+- Service trả `Page<CategoryResponse>`
 
-### `POST /api/v1/admin/categories` (ADMIN)
+### `GET /api/v1/categories/{categoryId}`
+- Public
+- Trả category theo id và chưa bị xóa
+- Nếu không tồn tại: `CATEGORY_NOT_FOUND`
 
-```text
-multipart CategoryCreateRequest → ADMIN + Bean Validation
-→ tên đã tồn tại trong category chưa xóa? có: CATEGORY_NAME_ALREADY_EXISTS
-→ parentId có? tìm parent chưa xóa; không có: CATEGORY_NOT_FOUND
-→ map Category, gán parent
-→ ảnh có? upload Cloudinary và gán URL/public ID
-→ save → map CategoryResponse → ApiResponse<CategoryResponse>
-```
+### `GET /api/v1/categories/tree`
+- Public
+- Lấy tất cả category chưa xóa và dựng cây theo parent-child
+- Trả `List<CategoryResponse>`
 
-### `GET /api/v1/categories?page_size=10&page_number=1` (public)
+### `PUT /api/v1/admin/categories/{categoryId}`
+- Admin-only
+- Cập nhật name/description/parentId/avatar
+- Nếu `parentId` là chính mình hoặc tạo vòng lặp thì báo lỗi `INVALID_PARENT_CATEGORY`
 
-```text
-query phân trang (mặc định 10/1)
-→ PageRequest(page_number - 1, page_size)
-→ findAllByDeletedFalse → map CategoryResponse
-→ ApiResponse<Page<CategoryResponse>>
-```
+### `DELETE /api/v1/admin/categories/{categoryId}`
+- Admin-only
+- Soft delete category
+- Message: `Delete Category Successfully`
 
-### `GET /api/v1/categories/{categoryId}` (public)
+### `GET /api/v1/categories/filter`
+- Public
+- Filter `name`, `parent_id`, `page`, `size`
+- Dùng `Specification` + `PageRequest`
 
-```text
-categoryId → findByIdAndDeletedFalse
-→ không có: CATEGORY_NOT_FOUND
-→ có: map CategoryResponse (children không được dựng ở response thường)
-→ ApiResponse<CategoryResponse>
-```
+## 5. Product API
 
-### `GET /api/v1/categories/tree` (public)
+### `POST /api/v1/admin/products`
+- Admin-only
+- `multipart/form-data`
+- Validate category tồn tại
+- Kiểm tra duplicate product name
+- Upload thumbnail nếu có
+- Trả `ProductResponse`
 
-```text
-findAllByDeletedFalse
-→ map từng category thành CategoryResponse theo ID
-→ category không parent thành root; category có parent nằm trong tập kết quả được gắn vào children của parent
-→ trả List<CategoryResponse> trong ApiResponse
-```
+### `PUT /api/v1/admin/products/{productId}`
+- Admin-only
+- Cập nhật partial fields
+- Nếu thay category: check category hợp lệ
+- Nếu đổi tên: check duplicate tên khác
+- Nếu upload ảnh mới: upload lên Cloudinary rồi xóa ảnh cũ
 
-### `PUT /api/v1/admin/categories/{categoryId}` (ADMIN)
+### `DELETE /api/v1/admin/products/{productId}`
+- Soft delete product
+- Message: `Delete Product Successfully`
 
-```text
-multipart CategoryUpdateRequest → tìm category chưa xóa (không có: CATEGORY_NOT_FOUND)
-→ name khác null/rỗng: trim, kiểm tra trùng category khác, cập nhật
-→ description khác null: cập nhật (chuỗi rỗng xóa mô tả)
-→ parentId null: giữ; rỗng: bỏ parent; có giá trị: tìm parent chưa xóa và ngăn tự tham chiếu/chu trình
-→ ảnh mới: upload xong mới xóa ảnh cũ
-→ map CategoryResponse → ApiResponse<CategoryResponse>
-```
+### `GET /api/v1/products`
+- Public
+- Query: `page_size`, `page_number`
+- `Page<ProductResponse>`
 
-### `DELETE /api/v1/admin/categories/{categoryId}` (ADMIN)
+### `GET /api/v1/products/{productId}`
+- Public
+- Lấy product và danh sách biến thể thuộc product
+- Trả `ProductDetailResponse`
 
-```text
-categoryId → tìm category chưa xóa (không có: CATEGORY_NOT_FOUND)
-→ set deleted=true, không cascade xuống product/category con
-→ ApiResponse<Void>(message="Delete Category Successfully")
-```
+### `GET /api/v1/products/filter`
+- Public
+- Filter: `name`, `category_id`, `page`, `size`
+- Dùng specification + parent-child category matching
 
-### `GET /api/v1/categories/filter?name=&parent_id=&page=1&size=10` (public)
+### `GET /api/v1/products/category/{categoryId}`
+- Public
+- Lấy sản phẩm theo category id
 
-```text
-filter tùy chọn → Specification deleted=false
-→ name có: LIKE %name%; parent_id có: parent.id bằng parent_id
-→ PageRequest(page - 1, size, createdAt DESC)
-→ map CategoryResponse → ApiResponse<Page<CategoryResponse>>
-```
+## 6. Product Variant API
 
-## Product
+### `POST /api/v1/admin/products/{productId}/variants`
+- Admin-only
+- Tạo biến thể cho product
+- Validate `name` và `sku` không blank
+- Check duplicate tên/SKU
 
-### `POST /api/v1/admin/products` (ADMIN)
+### `PUT /api/v1/admin/products/variants/{variantId}`
+- Admin-only
+- Cập nhật biến thể
+- Có thể cập nhật giá, số lượng, trạng thái, tên, SKU
 
-```text
-multipart ProductCreateRequest → ADMIN + Bean Validation
-→ tìm category theo ID và deleted=false (không có: CATEGORY_NOT_FOUND)
-→ trim tên; tên trùng product chưa xóa: PRODUCT_NAME_ALREADY_EXISTS
-→ map Product, gán category
-→ ảnh có? upload Cloudinary và gán thumbnail URL/public ID
-→ save → map ProductResponse → ApiResponse<ProductResponse>
-```
+### `DELETE /api/v1/admin/products/variants/{variantId}`
+- Admin-only
+- Soft delete nếu có logic tương ứng
 
-### `PUT /api/v1/admin/products/{productId}` (ADMIN)
+### `GET /api/v1/admin/product-variants`
+- Admin-only
+- Pagination `page_size`, `page_number`
 
-```text
-multipart ProductUpdateRequest dạng partial
-→ tìm product chưa xóa (không có: PRODUCT_NOT_FOUND)
-→ categoryId khác null/rỗng: tìm category chưa xóa (không có: CATEGORY_NOT_FOUND), gán
-→ name khác null/rỗng: trim, kiểm tra trùng product khác, cập nhật
-→ description khác null: cập nhật
-→ ảnh mới: upload trước, sau đó xóa ảnh cũ và cập nhật URL/public ID
-→ map ProductResponse → ApiResponse<ProductResponse>
-```
+### `GET /api/v1/admin/product-variants/statistics`
+- Admin-only
+- Trả thống kê tổng quan về biến thể sản phẩm
 
-### `DELETE /api/v1/admin/products/{productId}` (ADMIN)
+### `GET /api/v1/admin/product-variants/filter`
+- Admin-only
+- Filter: `variant_name`, `sku`, `product_id`, `min_price`, `max_price`, `page`, `size`
 
-```text
-productId → tìm product chưa xóa (không có: PRODUCT_NOT_FOUND)
-→ set deleted=true
-→ ApiResponse<Void>(message="Delete Product Successfully")
-```
+### `GET /api/v1/admin/product-variants/export`
+- Admin-only
+- Export Excel bằng EasyExcel
+- Content-Type: `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
 
-### `GET /api/v1/products?page_size=10&page_number=1` (public)
+## 7. Coupon API
 
-```text
-query phân trang (mặc định 10/1) → PageRequest(page_number - 1, page_size)
-→ findAllByDeletedFalse → map ProductResponse (categoryId/categoryName)
-→ ApiResponse<Page<ProductResponse>>
-```
+Route base: `/api/v1/admin/coupons`
 
-### `GET /api/v1/products/{productId}` (public)
+### CRUD
+- `POST /api/v1/admin/coupons` create
+- `GET /api/v1/admin/coupons` list paging
+- `GET /api/v1/admin/coupons/{couponId}` get by id
+- `PUT /api/v1/admin/coupons/{couponId}` update
+- `DELETE /api/v1/admin/coupons/{couponId}` delete
+- `PATCH /api/v1/admin/coupons/{couponId}/status` update status
 
-```text
-productId → tìm product deleted=false (không có: PRODUCT_NOT_FOUND)
-→ tải variant thuộc product và deleted=false
-→ map ProductDetailResponse + danh sách ProductVariantResponse
-→ ApiResponse<ProductDetailResponse>
-```
+### Filter
+`GET /api/v1/admin/coupons/filter`
+- `code`
+- `status`
+- `discount_type`
+- `start_date_from`, `start_date_to`
+- `end_date_from`, `end_date_to`
+- `page`, `size`
 
-### `GET /api/v1/products/filter?name=&category_id=&page=1&size=10` (public)
+Rules kiểm tra nghiệp vụ:
+- `INVALID_COUPON_DATES` nếu end date < start date
+- `INVALID_COUPON_DISCOUNT` nếu discount % > 100
+- `COUPON_ALREADY_EXISTS` nếu code trùng
 
-```text
-filter tùy chọn → Specification product deleted=false
-→ name có: LIKE %name%
-→ category_id có: lấy category đó và các hậu duệ, lọc product theo các category ID
-→ PageRequest(page - 1, size, createdAt DESC) → map ProductResponse
-→ ApiResponse<Page<ProductResponse>>
-```
+## 8. Cart API
+
+Base path: `/api/v1/carts`
+
+### `POST /api/v1/carts/items`
+- User-only
+- Thêm item vào giỏ
+- `AddToCartRequest`
+- kiểm tra stock, product variant, user
+
+### `GET /api/v1/carts/items`
+- User-only
+- Lấy giỏ hàng hiện tại của user
+- Trả `CartResponse`
+
+### `PUT /api/v1/carts/items/{cartItemId}`
+- User-only
+- Cập nhật số lượng item
+- kiểm tra `quantity` hợp lệ và stock đủ
+
+### `DELETE /api/v1/carts/items/{cartItemId}`
+- User-only
+- Xóa item khỏi giỏ
+
+## 9. Order API
+
+### User side
+
+#### `POST /api/v1/orders`
+- User-only
+- Tạo đơn hàng từ cart hoặc request tạo đơn
+- `OrderCreateRequest`
+- Kiểm tra tồn kho, coupon, user, status hợp lệ
+
+#### `GET /api/v1/orders`
+- User-only
+- Danh sách đơn hàng của user theo pagination
+- Trả `Page<OrderSummaryResponse>`
+
+#### `GET /api/v1/orders/filter`
+- User-only
+- Filter theo `status`
+
+#### `GET /api/v1/orders/{orderId}`
+- User-only
+- Trả chi tiết đơn hàng của user
+
+#### `PUT /api/v1/orders/{orderId}/cancel`
+- User-only
+- Hủy đơn nếu trạng thái cho phép
+- Nếu không thể hủy: `ORDER_CANNOT_BE_CANCELLED`
+
+#### `GET /api/v1/orders/{orderId}/tracking`
+- User-only
+- Lấy lịch sử tracking order
+
+### Admin side
+
+#### `GET /api/v1/admin/orders/statistics`
+- Admin-only
+- Trả số liệu thống kê order
+
+#### `GET /api/v1/admin/orders`
+- Admin-only
+- Danh sách tất cả đơn hàng
+
+#### `GET /api/v1/admin/orders/filter`
+- Admin-only
+- Filter theo `status`, `page_size`, `page_number`
+
+#### `GET /api/v1/admin/orders/{orderId}`
+- Admin-only
+- Chi tiết order của admin
+
+#### `PATCH /api/v1/admin/orders/{orderId}/status`
+- Admin-only
+- Cập nhật trạng thái order
+- Kiểm tra `INVALID_ORDER_STATUS_TRANSITION`
+
+#### `GET /api/v1/admin/order/export`
+- Admin-only
+- Export Excel list order
+
+### Shipper side
+
+#### `GET /api/v1/shipper/orders/`
+- Shipper-only
+- Danh sách đơn hàng được giao cho shipper
+
+#### `PATCH /api/v1/shipper/orders/{orderId}/status`
+- Shipper-only
+- Cập nhật trạng thái vận chuyển
+
+## 10. Dòng dữ liệu hiện tại của project
+
+Có thể tóm tắt luồng đi của project như sau:
+
+- Client gọi REST endpoint
+- Security xác thực và phân quyền theo role
+- Controller nhận request và validate DTO
+- Service thực hiện business logic
+- Repository truy vấn DB
+- Mapper chuyển entity sang response DTO
+- Exception handler trả `ApiResponse` chuẩn hoặc `HttpStatus`
+
+## 11. Điểm hiện tại cần lưu ý
+
+- Project đang ở mức backend API thương mại điện tử demo/portfolio, chưa phải hệ thống production-ready hoàn chỉnh.
+- Authentication đang dùng HTTP Basic thay vì JWT.
+- `application.yaml` đang chứa cấu hình local (database, mail, Cloudinary), cần dùng environment variables hoặc local external config khi deploy.
+- Một số endpoint, logic và validation còn chưa đồng nhất hoàn toàn về format response, nhưng nhìn chung đã có nền tảng khá rõ ràng cho việc phát triển tiếp.
+
+## 12. Kết luận
+
+Project có đầy đủ các module cốt lõi của một backend ecommerce: auth, user, catalog, product, variant, cart, order, coupon, phân quyền và export. Đây là một project rất phù hợp để dùng làm minh chứng kỹ năng Java backend fresher, vì nó cho thấy khả năng xây dựng API theo architecture rõ ràng, xử lý lỗi hợp lý và điều phối logic giữa các layer.
 
 Category không tồn tại/bị xóa khi lấy ID hậu duệ trả `CATEGORY_NOT_FOUND`.
 

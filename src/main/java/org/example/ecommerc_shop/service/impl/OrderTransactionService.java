@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.example.ecommerc_shop.common.DiscountType;
 import org.example.ecommerc_shop.common.OrderStatus;
 import org.example.ecommerc_shop.common.PaymentStatus;
+import org.example.ecommerc_shop.common.PaymentMethod;
 import org.example.ecommerc_shop.dto.request.OrderCreateRequest;
 import org.example.ecommerc_shop.dto.response.OrderItemResponse;
 import org.example.ecommerc_shop.dto.response.OrderResponse;
@@ -93,7 +94,8 @@ public class OrderTransactionService {
         order.setTrackingNumber(generateTrackingNumber());
         order.setUser(user);
         order.setStatus(OrderStatus.PENDING);
-        order.setPaymentStatus(PaymentStatus.UNPAID);
+        order.setPaymentStatus(request.getPaymentMethod() == PaymentMethod.VNPAY
+                ? PaymentStatus.AWAITING_PAYMENT : PaymentStatus.UNPAID);
         order.setCoupon(coupon);
         order.setSubtotal(subtotal);
         order.setDiscount(discount);

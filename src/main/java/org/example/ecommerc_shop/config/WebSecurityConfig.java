@@ -39,6 +39,7 @@ public class WebSecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(PUBLIC_SWAGGER_ENDPOINTS).permitAll()
                         .requestMatchers("/api/v1/auth/**").permitAll()
+                        .requestMatchers("/api/v1/payments/vnpay/ipn", "/api/v1/payments/vnpay/return").permitAll()
                         .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/v1/shipper/**").hasRole("SHIPPER")
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/categories/**").permitAll()

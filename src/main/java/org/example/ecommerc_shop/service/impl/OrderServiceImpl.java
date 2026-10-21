@@ -27,6 +27,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -113,7 +114,7 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional(readOnly = true)
     public OrderStatisticsResponse getStatistics() {
-        java.util.Map<OrderStatus, Long> byStatus = new java.util.EnumMap<>(OrderStatus.class);
+        Map<OrderStatus, Long> byStatus = new java.util.EnumMap<>(OrderStatus.class);
         for (OrderStatus status : OrderStatus.values()) byStatus.put(status, 0L);
         orderRepository.countOrdersByStatus().forEach(row -> byStatus.put(row.getStatus(), row.getTotal()));
         return OrderStatisticsResponse.builder()

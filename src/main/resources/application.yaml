@@ -33,3 +33,12 @@ cloudinary:
   cloud-name: ${h1sdlryp}
   api-key: ${863611481138859}
   api-secret: ${0Gb20OqleiUVLtV3Hd_N1ue7SL8}
+vnpay:
+  url: ${VNPAY_URL:https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
+  return-url: ${VNPAY_RETURN_URL:http://localhost:8686/api/v1/payments/vnpay/return}
+  ipn-url: ${VNPAY_IPN_URL:http://localhost:8686/api/v1/payments/vnpay/ipn}
+  tmn-code: ${VNPAY_TMN_CODE:}
+  hash-secret: ${VNPAY_HASH_SECRET:}
+  version: "2.1.0"
+  currency: VND
+  locale: vn

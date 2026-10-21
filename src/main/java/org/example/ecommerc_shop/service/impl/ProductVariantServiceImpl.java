@@ -10,6 +10,7 @@ import org.example.ecommerc_shop.dto.request.ProductVariantUpdateRequest;
 import org.example.ecommerc_shop.dto.response.CloudinaryUploadResponse;
 import org.example.ecommerc_shop.dto.response.ProductVariantResponse;
 import org.example.ecommerc_shop.dto.response.ProductVariantExcelExport;
+import org.example.ecommerc_shop.dto.response.ProductVariantStatisticsResponse;
 import org.example.ecommerc_shop.entity.Product;
 import org.example.ecommerc_shop.entity.ProductVariant;
 import org.example.ecommerc_shop.exception.AppException;
@@ -212,11 +213,11 @@ public class ProductVariantServiceImpl implements ProductVariantService {
     public org.example.ecommerc_shop.dto.response.ProductVariantStatisticsResponse getStatistics() {
         var row = productVariantRepository.getStatistics(5);
         if (row == null) {
-            return org.example.ecommerc_shop.dto.response.ProductVariantStatisticsResponse.builder()
+            return ProductVariantStatisticsResponse.builder()
                     .totalVariants(0).inStockVariants(0).lowStockVariants(0)
                     .outOfStockVariants(0).totalQuantityInStock(0).averagePrice(BigDecimal.ZERO).build();
         }
-        return org.example.ecommerc_shop.dto.response.ProductVariantStatisticsResponse.builder()
+        return ProductVariantStatisticsResponse.builder()
                 .totalVariants(value(row.getTotalVariants()))
                 .inStockVariants(value(row.getInStockVariants()))
                 .lowStockVariants(value(row.getLowStockVariants()))

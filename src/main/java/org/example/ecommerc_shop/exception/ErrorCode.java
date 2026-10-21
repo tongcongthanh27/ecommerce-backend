@@ -42,7 +42,8 @@ public enum ErrorCode {
     INVALID_PRICE_RANGE(1031, "Minimum price cannot exceed maximum price", HttpStatus.BAD_REQUEST),
     INVALID_COUPON_VALUES(1032, "Coupon limits and status are invalid", HttpStatus.BAD_REQUEST),
     INVALID_USER_ROLE(1033, "User role is required", HttpStatus.BAD_REQUEST),
-    INVALID_USER_PROFILE(1034, "User profile fields cannot be blank", HttpStatus.BAD_REQUEST);
+    INVALID_USER_PROFILE(1034, "User profile fields cannot be blank", HttpStatus.BAD_REQUEST),
+    PAYMENT_NOT_AVAILABLE(1036, "VNPAY payment is not available for this order", HttpStatus.BAD_REQUEST);
 
     private final int code;
     private final String message;

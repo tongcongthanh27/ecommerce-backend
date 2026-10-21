@@ -1,12 +1,14 @@
 package org.example.ecommerc_shop.controller;
 
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.example.ecommerc_shop.common.OrderStatus;
 import org.example.ecommerc_shop.dto.ApiResponse;
 import org.example.ecommerc_shop.dto.request.OrderCreateRequest;
 import org.example.ecommerc_shop.dto.response.*;
+import org.example.ecommerc_shop.service.VnPayService;
 import org.example.ecommerc_shop.service.OrderService;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpHeaders;
@@ -15,18 +17,29 @@ import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
 import java.security.Principal;
+import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("api/v1")
 public class OrderController {
     private final OrderService orderService;
+    private final VnPayService vnPayService;
 
     @PreAuthorize("hasRole('USER')")
     @PostMapping("/orders")
-    public ApiResponse<OrderResponse> createOrder(@Valid @RequestBody OrderCreateRequest request, Principal principal){
+    public ApiResponse<?> createOrder(@Valid @RequestBody OrderCreateRequest request, Principal principal,
+                                      HttpServletRequest httpRequest){
+        OrderResponse order = orderService.createOrder(request, principal.getName());
+        if (request.getPaymentMethod() == org.example.ecommerc_shop.common.PaymentMethod.VNPAY) {
+            return ApiResponse.builder()
+                    .result(Map.of("order", order,
+                            "payment", vnPayService.createPayment(order.getId(), principal.getName(), httpRequest)))
+                    .build();
+        }
         return ApiResponse.<OrderResponse>builder()
-                .result(orderService.createOrder(request, principal.getName()))
+                .result(order)
                 .build();
     }
 
@@ -63,9 +76,9 @@ public class OrderController {
 
     @PreAuthorize("hasRole('USER')")
     @GetMapping("/orders/{orderId}/tracking")
-    public ApiResponse<java.util.List<TrackingLogResponse>> getOrderTracking(
+    public ApiResponse<List<TrackingLogResponse>> getOrderTracking(
             @PathVariable String orderId, Principal principal) {
-        return ApiResponse.<java.util.List<TrackingLogResponse>>builder()
+        return ApiResponse.<List<TrackingLogResponse>>builder()
                 .result(orderService.getOrderTracking(orderId, principal.getName()))
                 .build();
     }
